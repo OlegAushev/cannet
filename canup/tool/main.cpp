@@ -28,7 +28,8 @@ std::optional<std::uint32_t> parse_u32(std::string_view s) {
   std::uint32_t value = 0;
   char const* const end = s.data() + s.size();
   auto const [ptr, ec] = std::from_chars(s.data(), end, value);
-  if (ec != std::errc{} || ptr != end) { // not a number / overflow / trailing junk
+  if (ec != std::errc{} || ptr != end) {
+    // not a number / overflow / trailing junk
     return std::nullopt;
   }
   return value;
@@ -69,19 +70,30 @@ int main(int argc, char** argv) {
     if (!result) {
       std::print(
           stderr,
-          "canup: up {} {} failed: {}\n",
+          "canup: up {} {} failed at '{}': {}\n",
           iface,
           *bitrate,
-          canup::to_string(result.error())
+          canup::to_string(result.error().op),
+          canup::to_string(result.error().err)
       );
       return 1;
     }
-    std::print(
-        "{} up (bitrate={}, restart_ms={})\n",
-        iface,
-        *bitrate,
-        restart_ms
-    );
+    if (result->restart_ms_applied) {
+      std::print(
+          "{} up (bitrate={}, restart_ms={})\n",
+          iface,
+          *bitrate,
+          restart_ms
+      );
+    } else {
+      std::print(
+          "{} up (bitrate={}, {})\n",
+          iface,
+          *bitrate,
+          restart_ms > 0 ? "auto-restart not applied: not supported by driver"
+                         : "auto-restart unchanged"
+      );
+    }
     return 0;
   }
 
@@ -90,9 +102,10 @@ int main(int argc, char** argv) {
     if (!result) {
       std::print(
           stderr,
-          "canup: down {} failed: {}\n",
+          "canup: down {} failed at '{}': {}\n",
           iface,
-          canup::to_string(result.error())
+          canup::to_string(result.error().op),
+          canup::to_string(result.error().err)
       );
       return 1;
     }
@@ -105,9 +118,10 @@ int main(int argc, char** argv) {
     if (!status) {
       std::print(
           stderr,
-          "canup: status {} failed: {}\n",
+          "canup: status {} failed at '{}': {}\n",
           iface,
-          canup::to_string(status.error())
+          canup::to_string(status.error().op),
+          canup::to_string(status.error().err)
       );
       return 1;
     }
