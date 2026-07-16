@@ -17,8 +17,7 @@ endif()
 add_subdirectory(canup)
 
 # --- transport plane: raw frame I/O (unprivileged) ---
-# TODO: move the slimmed-down can::Socket (bind/send/recv) here as cannet::cansocket
-# add_subdirectory(cansocket)
+add_subdirectory(cansocket)
 
 # --- protocol plane: CANopen over the transport (unprivileged) ---
 # TODO: move canopen here as cannet::canopen (depends on cannet::cansocket)
