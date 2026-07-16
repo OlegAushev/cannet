@@ -1,10 +1,10 @@
-// cansock — CLI diagnostic tool over cannet::cansocket.
+// cansock — CLI diagnostic tool over cannet::raw::socket.
 //
 // The interface must already be up (see canup); no privileges required.
 // dump: print incoming frames until interrupted (Ctrl+C).
 // send: transmit one frame; id > 0x7FF selects an extended (29-bit) id.
 
-#include <cansocket/socket.h>
+#include <cansocket/raw/socket.h>
 
 #include <charconv>
 #include <cstdint>
@@ -46,17 +46,17 @@ void print_frame(can_frame const& frame) {
   std::print("\n");
 }
 
-int dump(cannet::socket& socket) {
+int dump(cannet::raw::socket& socket) {
   using namespace std::chrono_literals;
   while (true) {
     auto const frame = socket.recv(500ms);
     if (frame) {
       print_frame(*frame);
-    } else if (frame.error() != cannet::socket_error::recv_timeout) {
+    } else if (frame.error() != cannet::raw::socket_error::recv_timeout) {
       std::print(
           stderr,
           "cansock: dump failed: {}\n",
-          cannet::to_string(frame.error())
+          cannet::raw::to_string(frame.error())
       );
       return 1;
     }
@@ -73,13 +73,13 @@ int main(int argc, char** argv) {
   std::string_view const cmd = argv[1];
   std::string_view const iface = argv[2];
 
-  cannet::socket socket;
+  cannet::raw::socket socket;
   if (auto const result = socket.open(iface); !result) {
     std::print(
         stderr,
         "cansock: failed to open {}: {}\n",
         iface,
-        cannet::to_string(result.error())
+        cannet::raw::to_string(result.error())
     );
     return 1;
   }
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
       std::print(
           stderr,
           "cansock: send failed: {}\n",
-          cannet::to_string(result.error())
+          cannet::raw::to_string(result.error())
       );
       return 1;
     }

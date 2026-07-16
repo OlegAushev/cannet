@@ -16,7 +16,7 @@ endif()
 # --- config plane: interface bring-up (privileged, needs CAP_NET_ADMIN) ---
 add_subdirectory(canup)
 
-# --- transport plane: raw frame I/O (unprivileged) ---
+# --- transport plane: CAN frame I/O (unprivileged); raw now, isotp/j1939 later ---
 add_subdirectory(cansocket)
 
 # --- protocol plane: CANopen over the transport (unprivileged) ---

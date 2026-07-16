@@ -1,9 +1,10 @@
-# cannet::cansocket — transport plane: raw CAN frame I/O over an already-up
-# interface (open/bind, send, recv). Unprivileged; interface configuration
-# (bitrate, up/down) belongs to cannet::canup.
+# cannet::cansocket — transport plane: CAN frame I/O over already-up
+# interfaces. cannet::raw (CAN_RAW sockets) today; ISO-TP/J1939 sockets are
+# planned as sibling types in this plane. Unprivileged; interface
+# configuration (bitrate, up/down) belongs to cannet::canup.
 
 add_library(cansocket
-    src/socket.cpp
+    src/raw/socket.cpp
 )
 
 add_library(cannet::cansocket ALIAS cansocket)
