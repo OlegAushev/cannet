@@ -1,12 +1,13 @@
 # cannet
 
 A family of CAN networking libraries for Linux hosts (PC and Raspberry Pi),
-built with g++ (C++23) and Ninja into a single `build/` tree — no presets,
-no cross-compilation:
+built with g++ (C++23) and Ninja — native, no cross-compilation. CMake presets
+(`debug`, `release`, `debug-asan`) hold the build trees under
+`build/<presetName>`:
 
 ```
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+cmake --preset debug
+cmake --build --preset debug
 ```
 
 Each library is a subdirectory holding its own `CMakeLists.txt`, public
@@ -82,17 +83,21 @@ Rules:
 
 After any substantive change, verify with:
 
-- Full build: `cmake --build build` (add `-- -k 0` to list all failures).
-  `-Werror` is on — a warning is a failure. WIP files may legitimately fail —
-  report, don't "fix" someone else's work in progress.
-- For anything touching buffers, lifetimes or arithmetic: an optimized build
-  too (`-DCMAKE_BUILD_TYPE=Release` in a scratchpad build dir) — `-Wconversion`
-  and `_FORTIFY_SOURCE` see things `-O0` does not — and, when a runtime path
-  changed, `-DCANNET_SANITIZE=ON` (needs `sudo dnf install libasan libubsan`).
-- IDE diagnostics: `clangd --check=<file> --compile-commands-dir=build`. The
-  root `.clangd` rewrites `-std=c++23` to `-std=c++2b` so clangd accepts the
-  g++ database.
-- Manual driving of the CLIs (`build/cansocket/cansock`, `build/canup/canup`)
+- Full build: `cmake --build --preset debug` (add `-- -k 0` to list all
+  failures). `-Werror` is on — a warning is a failure. WIP files may
+  legitimately fail — report, don't "fix" someone else's work in progress.
+- For anything touching buffers, lifetimes or arithmetic: also
+  `cmake --build --preset release` — `-Wconversion` and `_FORTIFY_SOURCE` see
+  things `-O0` does not — and, when a runtime path changed, the `debug-asan`
+  preset (needs `sudo dnf install libasan libubsan`).
+- IDE diagnostics: `clangd --check=<file>
+  --compile-commands-dir=build/debug`. The IDE's clangd instead reads
+  `build/compile_commands.json`, a copy of the active CMake Tools preset's
+  database (`cmake.copyCompileCommands`); pin the preset dir on the CLI for
+  reproducible checks. The root `.clangd` rewrites `-std=c++23` to
+  `-std=c++2b` so clangd accepts the g++ database.
+- Manual driving of the CLIs (`build/debug/cansocket/cansock`,
+  `build/debug/canup/canup`)
   against a `vcan0` interface. Creating vcan and any `canup up/down` are
   privileged operations — never run them unless asked.
 

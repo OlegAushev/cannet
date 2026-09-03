@@ -1,0 +1,10 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.copyCompileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "clangd.arguments": [
+    "--background-index",
+    "--compile-commands-dir=build",
+    "--header-insertion=never"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
