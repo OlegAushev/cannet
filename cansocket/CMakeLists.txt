@@ -15,6 +15,8 @@ target_include_directories(cansocket PUBLIC
 
 target_compile_features(cansocket PUBLIC cxx_std_23)
 
+target_link_libraries(cansocket PRIVATE cannet_build_config)
+
 # --- cansock CLI: the "test binary" you drive manually (dump/send) ---
 option(CANSOCKET_BUILD_TOOL "Build the cansock CLI diagnostic tool"
        ${CANNET_STANDALONE}
@@ -23,5 +25,5 @@ option(CANSOCKET_BUILD_TOOL "Build the cansock CLI diagnostic tool"
 if(CANSOCKET_BUILD_TOOL)
     add_executable(cansocket-cli tool/main.cpp)
     set_target_properties(cansocket-cli PROPERTIES OUTPUT_NAME cansock)
-    target_link_libraries(cansocket-cli PRIVATE cannet::cansocket)
+    target_link_libraries(cansocket-cli PRIVATE cannet::cansocket cannet_build_config)
 endif()

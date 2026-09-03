@@ -17,6 +17,8 @@ target_include_directories(canup PUBLIC
 
 target_compile_features(canup PUBLIC cxx_std_23)
 
+target_link_libraries(canup PRIVATE cannet_build_config)
+
 # --- libsocketcan (prefer pkg-config, fall back to plain find) ---
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -43,5 +45,5 @@ option(CANUP_BUILD_TOOL "Build the canup CLI diagnostic tool" ${CANNET_STANDALON
 if(CANUP_BUILD_TOOL)
     add_executable(canup-cli tool/main.cpp)
     set_target_properties(canup-cli PROPERTIES OUTPUT_NAME canup)
-    target_link_libraries(canup-cli PRIVATE cannet::canup)
+    target_link_libraries(canup-cli PRIVATE cannet::canup cannet_build_config)
 endif()
