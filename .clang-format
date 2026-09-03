@@ -1,7 +1,7 @@
 # BasedOnStyle: LLVM
 Language: Cpp
 AccessModifierOffset: -2
-AlignAfterOpenBracket: BlockIndent
+AlignAfterOpenBracket: true
 AlignArrayOfStructures: None
 AlignConsecutiveAssignments: None
 AlignConsecutiveBitFields: None
@@ -37,7 +37,7 @@ BreakAdjacentStringLiterals: true
 BreakAfterAttributes: Leave
 BreakAfterReturnType: ExceptShortType
 BreakBeforeBinaryOperators: NonAssignment
-BreakBeforeBraces: Attach
+BreakBeforeBraces: Stroustrup
 BreakBeforeConceptDeclarations: Always
 BreakBeforeInlineASMColon: OnlyMultiline
 BreakBeforeTernaryOperators: true
@@ -72,10 +72,16 @@ LambdaBodyIndentation: Signature
 LineEnding: DeriveLF
 MaxEmptyLinesToKeep: 1
 NamespaceIndentation: None
+NumericLiteralCase:
+  ExponentLetter: Lower
+  HexDigit: Upper
+  Prefix: Lower
+  Suffix: Lower
 PPIndentWidth: -1
 PackConstructorInitializers: NextLine
 PenaltyBreakAssignment: 200
 PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakBeforeMemberAccess: 300
 PenaltyBreakComment: 300
 PenaltyBreakFirstLessLess: 120
 PenaltyBreakOpenParenthesis: 0
@@ -115,6 +121,6 @@ SpacesBeforeTrailingComments: 1
 SpacesInAngles: Never
 SpacesInParens: Never
 SpacesInSquareBrackets: false
-Standard: Latest # Latest or c++03 for TI-projects
+Standard: Latest
 TabWidth: 2
 UseTab: Never

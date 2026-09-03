@@ -48,10 +48,9 @@ struct up_report {
 
 // Brings the interface down, sets bitrate (+ auto-restart), brings it up.
 // Requires CAP_NET_ADMIN. restart_ms == 0 leaves auto-restart untouched.
-std::expected<up_report, failure_report>
-up(std::string_view iface,
-   std::uint32_t bitrate,
-   std::uint32_t restart_ms = 100);
+std::expected<up_report, failure_report> up(std::string_view iface,
+                                            std::uint32_t bitrate,
+                                            std::uint32_t restart_ms = 100);
 
 // Brings the interface down. Requires CAP_NET_ADMIN.
 std::expected<void, failure_report> down(std::string_view iface);

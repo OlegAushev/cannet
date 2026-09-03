@@ -1,4 +1,4 @@
-#include <canup/canup.h>
+#include <canup/canup.hpp>
 
 #include <libsocketcan.h>
 
@@ -19,7 +19,8 @@ namespace {
 // Note: fd redirection is process-wide while an instance is alive.
 class stderr_silencer {
 public:
-  stderr_silencer() {
+  stderr_silencer()
+  {
     std::fflush(stderr);
     saved_fd_ = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 0);
     if (saved_fd_ < 0) {
@@ -32,7 +33,8 @@ public:
     }
   }
 
-  ~stderr_silencer() {
+  ~stderr_silencer()
+  {
     if (saved_fd_ >= 0) {
       std::fflush(stderr);
       dup2(saved_fd_, STDERR_FILENO);
@@ -50,7 +52,8 @@ private:
 // Runs one libsocketcan call with stderr silenced; returns the errno
 // captured right after the call (0 on success).
 template<typename F>
-int silenced(F&& call) {
+int silenced(F&& call)
+{
   stderr_silencer const silencer;
   errno = 0;
   if (call() < 0) {
@@ -59,7 +62,8 @@ int silenced(F&& call) {
   return 0;
 }
 
-error error_from(int err) {
+error error_from(int err)
+{
   switch (err) {
   case EPERM:
   case EACCES: return error::permission_denied;
@@ -70,18 +74,20 @@ error error_from(int err) {
   }
 }
 
-std::unexpected<failure_report> fail(operation op, int err) {
+std::unexpected<failure_report> fail(operation op, int err)
+{
   return std::unexpected(failure_report{op, error_from(err)});
 }
 
 } // namespace
 
-std::expected<up_report, failure_report>
-up(std::string_view iface, std::uint32_t bitrate, std::uint32_t restart_ms) {
+std::expected<up_report, failure_report> up(std::string_view iface,
+                                            std::uint32_t bitrate,
+                                            std::uint32_t restart_ms)
+{
   if (bitrate == 0) {
     return std::unexpected(
-        failure_report{operation::set_bitrate, error::invalid_bitrate}
-    );
+        failure_report{operation::set_bitrate, error::invalid_bitrate});
   }
 
   std::string const name(iface);
@@ -91,25 +97,20 @@ up(std::string_view iface, std::uint32_t bitrate, std::uint32_t restart_ms) {
     return fail(operation::stop, err);
   }
 
-  if (int const err = silenced([&] {
-        return can_set_bitrate(name.c_str(), bitrate);
-      })) {
+  if (int const err = silenced(
+          [&] { return can_set_bitrate(name.c_str(), bitrate); })) {
     // The driver rejects an unsupported bitrate value with EINVAL.
-    return (err == EINVAL) ? std::unexpected(
-                                 failure_report{
-                                     operation::set_bitrate,
-                                     error::invalid_bitrate
-                                 }
-                             )
-                           : fail(operation::set_bitrate, err);
+    return (err == EINVAL)
+             ? std::unexpected(failure_report{operation::set_bitrate,
+                                              error::invalid_bitrate})
+             : fail(operation::set_bitrate, err);
   }
 
   up_report report;
   if (restart_ms > 0) {
     // Non-fatal: some drivers/virtual interfaces don't support auto-restart.
-    int const err = silenced([&] {
-      return can_set_restart_ms(name.c_str(), restart_ms);
-    });
+    int const err = silenced(
+        [&] { return can_set_restart_ms(name.c_str(), restart_ms); });
     report.restart_ms_applied = (err == 0);
   }
 
@@ -120,7 +121,8 @@ up(std::string_view iface, std::uint32_t bitrate, std::uint32_t restart_ms) {
   return report;
 }
 
-std::expected<void, failure_report> down(std::string_view iface) {
+std::expected<void, failure_report> down(std::string_view iface)
+{
   std::string const name(iface);
   if (int const err = silenced([&] { return can_do_stop(name.c_str()); })) {
     return fail(operation::stop, err);
@@ -128,13 +130,13 @@ std::expected<void, failure_report> down(std::string_view iface) {
   return {};
 }
 
-std::expected<network_state, failure_report> status(std::string_view iface) {
+std::expected<network_state, failure_report> status(std::string_view iface)
+{
   std::string const name(iface);
 
   int state = 0;
-  if (int const err = silenced([&] {
-        return can_get_state(name.c_str(), &state);
-      })) {
+  if (int const err = silenced(
+          [&] { return can_get_state(name.c_str(), &state); })) {
     return fail(operation::get_state, err);
   }
 
@@ -149,7 +151,8 @@ std::expected<network_state, failure_report> status(std::string_view iface) {
   return st;
 }
 
-std::string_view to_string(operation op) {
+std::string_view to_string(operation op)
+{
   switch (op) {
   case operation::stop: return "stop";
   case operation::set_bitrate: return "set bitrate";
@@ -161,7 +164,8 @@ std::string_view to_string(operation op) {
   return "unknown operation";
 }
 
-std::string_view to_string(error e) {
+std::string_view to_string(error e)
+{
   switch (e) {
   case error::invalid_bitrate: return "invalid bitrate";
   case error::device_not_found: return "device not found";

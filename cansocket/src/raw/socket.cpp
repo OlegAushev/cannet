@@ -1,4 +1,4 @@
-#include <cansocket/raw/socket.h>
+#include <cansocket/raw/socket.hpp>
 
 #include <linux/can/raw.h>
 #include <net/if.h>
@@ -15,23 +15,27 @@ namespace cannet::raw {
 namespace {
 
 // Small int-valued SOL_CAN_RAW options (loopback, recv_own_msgs).
-bool set_raw_option(int fd, int optname, int value) {
+bool set_raw_option(int fd, int optname, int value)
+{
   return setsockopt(fd, SOL_CAN_RAW, optname, &value, sizeof(value)) == 0;
 }
 
 } // namespace
 
-socket::~socket() {
+socket::~socket()
+{
   if (fd_ >= 0) {
     ::close(fd_);
   }
 }
 
-socket::socket(socket&& other) noexcept : fd_(other.fd_) {
+socket::socket(socket&& other) noexcept : fd_(other.fd_)
+{
   other.fd_ = -1;
 }
 
-socket& socket::operator=(socket&& other) noexcept {
+socket& socket::operator=(socket&& other) noexcept
+{
   if (this != &other) {
     if (fd_ >= 0) {
       ::close(fd_);
@@ -42,7 +46,8 @@ socket& socket::operator=(socket&& other) noexcept {
   return *this;
 }
 
-std::expected<void, socket_error> socket::open(std::string_view iface) {
+std::expected<void, socket_error> socket::open(std::string_view iface)
+{
   if (fd_ >= 0) {
     ::close(fd_);
     fd_ = -1;
@@ -52,11 +57,9 @@ std::expected<void, socket_error> socket::open(std::string_view iface) {
   if (iface.size() >= IFNAMSIZ) {
     return std::unexpected(socket_error::interface_not_found);
   }
-  std::memcpy(
-      ifr.ifr_name,
-      iface.data(),
-      iface.size()
-  ); // zero-init'ed => NUL-terminated
+  std::memcpy(ifr.ifr_name,
+              iface.data(),
+              iface.size()); // zero-init'ed => NUL-terminated
 
   int const fd = ::socket(PF_CAN, SOCK_RAW, CAN_RAW);
   if (fd < 0) {
@@ -81,7 +84,8 @@ std::expected<void, socket_error> socket::open(std::string_view iface) {
   return {};
 }
 
-std::expected<void, socket_error> socket::close() {
+std::expected<void, socket_error> socket::close()
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
@@ -95,27 +99,27 @@ std::expected<void, socket_error> socket::close() {
 }
 
 std::expected<void, socket_error>
-socket::set_filters(std::span<can_filter const> filters) {
+socket::set_filters(std::span<can_filter const> filters)
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
 
   // The kernel caps the filter count (512 as of Linux 6.x) and rejects an
   // oversized set with EINVAL.
-  if (setsockopt(
-          fd_,
-          SOL_CAN_RAW,
-          CAN_RAW_FILTER,
-          filters.data(),
-          static_cast<socklen_t>(filters.size_bytes())
-      )
+  if (setsockopt(fd_,
+                 SOL_CAN_RAW,
+                 CAN_RAW_FILTER,
+                 filters.data(),
+                 static_cast<socklen_t>(filters.size_bytes()))
       < 0) {
     return std::unexpected(socket_error::set_option_failed);
   }
   return {};
 }
 
-std::expected<void, socket_error> socket::set_loopback(bool enabled) {
+std::expected<void, socket_error> socket::set_loopback(bool enabled)
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
@@ -125,7 +129,8 @@ std::expected<void, socket_error> socket::set_loopback(bool enabled) {
   return {};
 }
 
-std::expected<void, socket_error> socket::set_recv_own_msgs(bool enabled) {
+std::expected<void, socket_error> socket::set_recv_own_msgs(bool enabled)
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
@@ -135,7 +140,8 @@ std::expected<void, socket_error> socket::set_recv_own_msgs(bool enabled) {
   return {};
 }
 
-std::expected<void, socket_error> socket::send(can_frame const& frame) {
+std::expected<void, socket_error> socket::send(can_frame const& frame)
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
@@ -145,10 +151,9 @@ std::expected<void, socket_error> socket::send(can_frame const& frame) {
     // ENOBUFS: the interface TX queue is full — the kernel reports it even
     // on a blocking socket. EAGAIN can appear only once the fd is switched
     // to non-blocking; both mean "retry later".
-    return std::unexpected(
-        (errno == ENOBUFS || errno == EAGAIN) ? socket_error::tx_queue_full
-                                              : socket_error::send_failed
-    );
+    return std::unexpected((errno == ENOBUFS || errno == EAGAIN)
+                               ? socket_error::tx_queue_full
+                               : socket_error::send_failed);
   }
   if (written != static_cast<ssize_t>(sizeof(can_frame))) {
     return std::unexpected(socket_error::send_failed);
@@ -157,7 +162,8 @@ std::expected<void, socket_error> socket::send(can_frame const& frame) {
 }
 
 std::expected<can_frame, socket_error>
-socket::recv(std::chrono::milliseconds timeout) {
+socket::recv(std::chrono::milliseconds timeout)
+{
   if (fd_ < 0) {
     return std::unexpected(socket_error::not_open);
   }
@@ -178,7 +184,8 @@ socket::recv(std::chrono::milliseconds timeout) {
   return frame;
 }
 
-std::string_view to_string(socket_error e) {
+std::string_view to_string(socket_error e)
+{
   switch (e) {
   case socket_error::not_open: return "socket is not open";
   case socket_error::create_failed: return "failed to create socket";

@@ -4,7 +4,7 @@
 // dump: print incoming frames until interrupted (Ctrl+C).
 // send: transmit one frame; id > 0x7FF selects an extended (29-bit) id.
 
-#include <cansocket/raw/socket.h>
+#include <cansocket/raw/socket.hpp>
 
 #include <charconv>
 #include <cstdint>
@@ -14,17 +14,17 @@
 
 namespace {
 
-int usage() {
-  std::print(
-      stderr,
-      "usage:\n"
-      "  cansock dump <iface>\n"
-      "  cansock send <iface> <id-hex> [byte-hex ...]\n"
-  );
+int usage()
+{
+  std::print(stderr,
+             "usage:\n"
+             "  cansock dump <iface>\n"
+             "  cansock send <iface> <id-hex> [byte-hex ...]\n");
   return 2;
 }
 
-std::optional<std::uint32_t> parse_hex(std::string_view s) {
+std::optional<std::uint32_t> parse_hex(std::string_view s)
+{
   std::uint32_t value = 0;
   char const* const end = s.data() + s.size();
   auto const [ptr, ec] = std::from_chars(s.data(), end, value, 16);
@@ -34,10 +34,12 @@ std::optional<std::uint32_t> parse_hex(std::string_view s) {
   return value;
 }
 
-void print_frame(can_frame const& frame) {
+void print_frame(can_frame const& frame)
+{
   if ((frame.can_id & CAN_EFF_FLAG) != 0) {
     std::print("{:08X}  [{}] ", frame.can_id & CAN_EFF_MASK, frame.len);
-  } else {
+  }
+  else {
     std::print("{:03X}  [{}] ", frame.can_id & CAN_SFF_MASK, frame.len);
   }
   for (int i = 0; i < frame.len; ++i) {
@@ -46,18 +48,18 @@ void print_frame(can_frame const& frame) {
   std::print("\n");
 }
 
-int dump(cannet::raw::socket& socket) {
+int dump(cannet::raw::socket& socket)
+{
   using namespace std::chrono_literals;
   while (true) {
     auto const frame = socket.recv(500ms);
     if (frame) {
       print_frame(*frame);
-    } else if (frame.error() != cannet::raw::socket_error::recv_timeout) {
-      std::print(
-          stderr,
-          "cansock: dump failed: {}\n",
-          cannet::raw::to_string(frame.error())
-      );
+    }
+    else if (frame.error() != cannet::raw::socket_error::recv_timeout) {
+      std::print(stderr,
+                 "cansock: dump failed: {}\n",
+                 cannet::raw::to_string(frame.error()));
       return 1;
     }
   }
@@ -65,7 +67,8 @@ int dump(cannet::raw::socket& socket) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   if (argc < 3) {
     return usage();
   }
@@ -75,12 +78,10 @@ int main(int argc, char** argv) {
 
   cannet::raw::socket socket;
   if (auto const result = socket.open(iface); !result) {
-    std::print(
-        stderr,
-        "cansock: failed to open {}: {}\n",
-        iface,
-        cannet::raw::to_string(result.error())
-    );
+    std::print(stderr,
+               "cansock: failed to open {}: {}\n",
+               iface,
+               cannet::raw::to_string(result.error()));
     return 1;
   }
 
@@ -115,11 +116,9 @@ int main(int argc, char** argv) {
     }
 
     if (auto const result = socket.send(frame); !result) {
-      std::print(
-          stderr,
-          "cansock: send failed: {}\n",
-          cannet::raw::to_string(result.error())
-      );
+      std::print(stderr,
+                 "cansock: send failed: {}\n",
+                 cannet::raw::to_string(result.error()));
       return 1;
     }
     print_frame(frame);

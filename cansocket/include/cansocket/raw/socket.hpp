@@ -54,13 +54,15 @@ public:
 
   std::expected<void, socket_error> close();
 
-  bool is_open() const {
+  bool is_open() const
+  {
     return fd_ >= 0;
   }
 
   // Raw fd for integration with poll()-based loops or asio (e.g. wrapping
   // in asio::posix::stream_descriptor); -1 when the socket is not open.
-  int native_handle() const {
+  int native_handle() const
+  {
     return fd_;
   }
 

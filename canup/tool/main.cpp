@@ -3,7 +3,7 @@
 // up/down require CAP_NET_ADMIN (run via sudo, or setcap the binary);
 // status needs no privileges.
 
-#include <canup/canup.h>
+#include <canup/canup.hpp>
 
 #include <charconv>
 #include <cstdint>
@@ -13,18 +13,18 @@
 
 namespace {
 
-int usage() {
-  std::print(
-      stderr,
-      "usage:\n"
-      "  canup up     <iface> <bitrate> [restart_ms]\n"
-      "  canup down   <iface>\n"
-      "  canup status <iface>\n"
-  );
+int usage()
+{
+  std::print(stderr,
+             "usage:\n"
+             "  canup up     <iface> <bitrate> [restart_ms]\n"
+             "  canup down   <iface>\n"
+             "  canup status <iface>\n");
   return 2;
 }
 
-std::optional<std::uint32_t> parse_u32(std::string_view s) {
+std::optional<std::uint32_t> parse_u32(std::string_view s)
+{
   std::uint32_t value = 0;
   char const* const end = s.data() + s.size();
   auto const [ptr, ec] = std::from_chars(s.data(), end, value);
@@ -37,7 +37,8 @@ std::optional<std::uint32_t> parse_u32(std::string_view s) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   using namespace cannet;
 
   if (argc < 3) {
@@ -68,31 +69,27 @@ int main(int argc, char** argv) {
 
     auto const result = canup::up(iface, *bitrate, restart_ms);
     if (!result) {
-      std::print(
-          stderr,
-          "canup: up {} {} failed at '{}': {}\n",
-          iface,
-          *bitrate,
-          canup::to_string(result.error().op),
-          canup::to_string(result.error().err)
-      );
+      std::print(stderr,
+                 "canup: up {} {} failed at '{}': {}\n",
+                 iface,
+                 *bitrate,
+                 canup::to_string(result.error().op),
+                 canup::to_string(result.error().err));
       return 1;
     }
     if (result->restart_ms_applied) {
-      std::print(
-          "{} up (bitrate={}, restart_ms={})\n",
-          iface,
-          *bitrate,
-          restart_ms
-      );
-    } else {
-      std::print(
-          "{} up (bitrate={}, {})\n",
-          iface,
-          *bitrate,
-          restart_ms > 0 ? "auto-restart not applied: not supported by driver"
-                         : "auto-restart unchanged"
-      );
+      std::print("{} up (bitrate={}, restart_ms={})\n",
+                 iface,
+                 *bitrate,
+                 restart_ms);
+    }
+    else {
+      std::print("{} up (bitrate={}, {})\n",
+                 iface,
+                 *bitrate,
+                 restart_ms > 0
+                     ? "auto-restart not applied: not supported by driver"
+                     : "auto-restart unchanged");
     }
     return 0;
   }
@@ -100,13 +97,11 @@ int main(int argc, char** argv) {
   if (cmd == "down") {
     auto const result = canup::down(iface);
     if (!result) {
-      std::print(
-          stderr,
-          "canup: down {} failed at '{}': {}\n",
-          iface,
-          canup::to_string(result.error().op),
-          canup::to_string(result.error().err)
-      );
+      std::print(stderr,
+                 "canup: down {} failed at '{}': {}\n",
+                 iface,
+                 canup::to_string(result.error().op),
+                 canup::to_string(result.error().err));
       return 1;
     }
     std::print("{} down\n", iface);
@@ -116,21 +111,17 @@ int main(int argc, char** argv) {
   if (cmd == "status") {
     auto const status = canup::status(iface);
     if (!status) {
-      std::print(
-          stderr,
-          "canup: status {} failed at '{}': {}\n",
-          iface,
-          canup::to_string(status.error().op),
-          canup::to_string(status.error().err)
-      );
+      std::print(stderr,
+                 "canup: status {} failed at '{}': {}\n",
+                 iface,
+                 canup::to_string(status.error().op),
+                 canup::to_string(status.error().err));
       return 1;
     }
-    std::print(
-        "{}: {} (bitrate={})\n",
-        iface,
-        status->up ? "UP" : "DOWN",
-        status->bitrate
-    );
+    std::print("{}: {} (bitrate={})\n",
+               iface,
+               status->up ? "UP" : "DOWN",
+               status->bitrate);
     return 0;
   }
 
