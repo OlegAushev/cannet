@@ -51,5 +51,32 @@
       "displayName": "Debug + ASan/UBSan",
       "configurePreset": "debug-asan"
     }
+  ],
+  "testPresets": [
+    {
+      "name": "common",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "inherits": "common",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": "common",
+      "configurePreset": "release"
+    },
+    {
+      "name": "debug-asan",
+      "displayName": "Debug + ASan/UBSan",
+      "inherits": "common",
+      "configurePreset": "debug-asan"
+    }
   ]
 }

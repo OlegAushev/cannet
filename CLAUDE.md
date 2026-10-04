@@ -46,9 +46,19 @@ what privileges they need. A plane never reaches upward.
   setsockopt space and I/O unit. Every protocol client owns its own fd — the
   kernel fans frames out — so there is no userspace demultiplexer between
   protocols.
-- `canopen/` (`namespace cannet::canopen`, planned) — protocol plane over the
+- `canopen/` (`namespace cannet::canopen`) — protocol plane over the
   transport, unprivileged. Routing by COB-ID *inside* one protocol is normal
-  and belongs here.
+  and belongs here. Present today: the wire data layer only — `types.hpp`
+  (node ids, predefined connection set, NMT), `sdo.hpp` (expedited SDO
+  codecs), `od.hpp` (the consteval-validated object dictionary and its
+  values), `od_format.hpp` (text conversion for UI and CLI). Pure functions
+  and constexpr data: no I/O, no state, no dependency on cansocket yet. The
+  transport binding, the client and its services build on top.
+
+  Names and semantics mirror the device-side stack
+  (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire
+  can be read side by side; roles are inverted, and PDO names stay the
+  device's (TPDO is device -> host).
 
 CMake target names are `cannet::<lib>` aliases (`cannet::canup`,
 `cannet::cansocket`); the underlying target keeps the bare name.
@@ -86,6 +96,15 @@ After any substantive change, verify with:
 - Full build: `cmake --build --preset debug` (add `-- -k 0` to list all
   failures). `-Werror` is on — a warning is a failure. WIP files may
   legitimately fail — report, don't "fix" someone else's work in progress.
+- Unit tests: `ctest --preset debug` (Catch2, one CTest entry per TEST_CASE).
+  Tests are standalone-build only (`CANNET_BUILD_TESTS`); Catch2 comes from
+  the system if installed, otherwise `cmake/catch2.cmake` fetches a pinned
+  version on the first configure.
+- Compile-time contracts (the consteval dictionary validation, `node_id`
+  literals) need *negative* checks too: small `g++ -std=c++23 -fsyntax-only`
+  programs in the session scratchpad that must fail, one malformed case per
+  `-DCASE=n`. A test that only compiles valid input proves nothing about
+  validation.
 - For anything touching buffers, lifetimes or arithmetic: also
   `cmake --build --preset release` — `-Wconversion` and `_FORTIFY_SOURCE` see
   things `-O0` does not — and, when a runtime path changed, the `debug-asan`

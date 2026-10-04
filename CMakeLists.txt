@@ -23,6 +23,10 @@ endif()
 
 option(CANNET_WERROR "Treat compiler warnings as errors" ${CANNET_STANDALONE})
 option(CANNET_SANITIZE "Build with AddressSanitizer + UBSan" OFF)
+option(CANNET_BUILD_TESTS "Build unit tests (needs Catch2)" ${CANNET_STANDALONE})
+set(CANNET_CATCH2_VERSION "3.16.0" CACHE STRING
+    "Catch2 version to fetch when the system has none"
+)
 
 add_library(cannet_build_config INTERFACE)
 
@@ -62,6 +66,13 @@ if(CANNET_SANITIZE)
         -fsanitize=address,undefined)
 endif()
 
+# --- tests ---
+if(CANNET_BUILD_TESTS)
+    enable_testing()
+    list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+    include(catch2)
+endif()
+
 # --- config plane: interface bring-up (privileged, needs CAP_NET_ADMIN) ---
 add_subdirectory(canup)
 
@@ -69,5 +80,4 @@ add_subdirectory(canup)
 add_subdirectory(cansocket)
 
 # --- protocol plane: CANopen over the transport (unprivileged) ---
-# TODO: move canopen here as cannet::canopen (depends on cannet::cansocket)
-# add_subdirectory(canopen)
+add_subdirectory(canopen)
