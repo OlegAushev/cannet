@@ -1,0 +1,51 @@
+#pragma once
+
+// The subscription registry behind every transport: matching, dispatch, and
+// the filter set a transport can hand to the kernel. Private to canopen.
+
+#include <canopen/transport.hpp>
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+namespace cannet::canopen::detail {
+
+// The CAN_RAW_FILTER rule.
+constexpr bool matches(can_filter const& filter, can_frame const& frame)
+{
+  return (frame.can_id & filter.can_mask) == (filter.can_id & filter.can_mask);
+}
+
+class subscribers {
+public:
+  std::uint64_t add(can_filter filter, transport::frame_handler handler);
+
+  // Safe while dispatching, including from the removed handler itself: the
+  // entry stops receiving at once and is erased once dispatch returns.
+  void remove(std::uint64_t id);
+
+  // Calls the matching handlers. Handlers may add and remove subscriptions;
+  // one added meanwhile first sees the next frame.
+  void dispatch(can_frame const& frame);
+
+  // The live filters, deduplicated.
+  std::vector<can_filter> filters() const;
+
+private:
+  struct entry {
+    std::uint64_t id;
+    can_filter filter;
+    transport::frame_handler handler;
+    bool active = true;
+  };
+
+  // Entries live on the heap so that a handler keeps its address while the
+  // vector grows under it.
+  std::vector<std::unique_ptr<entry>> entries_;
+  std::uint64_t next_id_ = 1;
+  bool dispatching_ = false;
+  bool has_removed_ = false;
+};
+
+} // namespace cannet::canopen::detail

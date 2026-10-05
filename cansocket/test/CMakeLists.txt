@@ -6,6 +6,7 @@ add_executable(cansocket-tests
 target_link_libraries(cansocket-tests PRIVATE
     cannet::cansocket
     Catch2::Catch2WithMain
+    cannet_test_support
     cannet_build_config
 )
 

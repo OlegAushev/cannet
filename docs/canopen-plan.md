@@ -1,7 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stage 1 done (`cd2712d`); stage 0 under way: Boost.Asio,
-`async_socket` and the async `cansock dump` are in, the transport is next.
+Status: in progress — stages 1 (`cd2712d`) and 0 done; stage 2 (the client
+and its services) and stage 3 (the SDO client) next.
 Last updated: 2026-10-05.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -55,7 +55,8 @@ style, adjusted for a host: heap allocation, `std::function`,
 canopen/
   include/canopen/
     types.hpp sdo.hpp od.hpp od_format.hpp   # stage 1, done
-    transport.hpp                            # stage 0
+    transport.hpp raw_transport.hpp
+    loopback.hpp                             # stage 0, done
     client.hpp remote_node.hpp               # stage 2
     detail/  nmt_master sync_producer hb_producer hb_consumer
              tpdo_consumer rpdo_producer emcy_consumer   # stage 2
@@ -71,7 +72,7 @@ canopen/
 
 | # | Content | Verified by | Status |
 |---|---------|-------------|--------|
-| 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | in progress: transport left |
+| 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | done |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client` and `detail/*` except `sdo_client` | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | |
 | 3 | `sdo_client`: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus | |
@@ -129,31 +130,49 @@ dependency is the Boost headers:
   operation completes with `socket_error::cancelled`. Each operation owns the
   frame it moves, so closing or destroying the socket with operations
   outstanding is safe.
-- The protocol does not know sockets, only a narrow transport interface, like
-  emblib's `emb::can::transport` but asynchronous. A virtual call costs
-  nothing that matters on a host and buys testability, so this is an
-  interface, not a concept. Sketch (`asio` stands for `boost::asio` in all
+- The protocol does not know sockets, only a narrow transport interface
+  (`transport.hpp`), like emblib's `emb::can::transport` but asynchronous. A
+  virtual call costs nothing that matters on a host and buys testability, so
+  this is an interface, not a concept (`asio` stands for `boost::asio` in all
   sketches):
 
   ```cpp
   class transport {
   public:
-    virtual ~transport() = default;
-    virtual void async_send(can_frame const&, send_handler) = 0;
-    virtual void subscribe(std::function<void(can_frame const&)>) = 0;
-    virtual void add_filter(canid_t id, canid_t mask) = 0;
-    virtual asio::any_io_executor get_executor() = 0;
+    using executor_type = asio::any_io_executor;
+    using frame_handler = std::move_only_function<void(can_frame const&)>;
+    using send_handler =
+        std::move_only_function<void(std::expected<void, transport_error>)>;
+
+    virtual executor_type get_executor() = 0;
+    // Frames go out in call order; `done` never runs inside send().
+    virtual void send(can_frame const& frame, send_handler done) = 0;
+    // Delivers matching frames until the subscription ends.
+    [[nodiscard]] virtual subscription subscribe(can_filter filter,
+                                                 frame_handler on_frame) = 0;
   };
   ```
 
-  Two implementations: `raw_transport` over `cannet::raw::async_socket`, and
-  `loopback_transport`, an in-memory bus for the protocol's unit tests.
+  A subscription carries its filter and ends when destroyed, so a node-id
+  change simply replaces subscriptions; handlers may subscribe and
+  unsubscribe while frames are dispatched. Send failures come as
+  `transport_error` (`closed`, `send_failed`, `tx_queue_full`). A full TX
+  queue goes back to the caller and is not retried: SYNC and heartbeat drop
+  the frame, the SDO client decides for itself.
+- `raw_transport` binds the interface to `cannet::raw::async_socket`. It lives
+  in canopen, since a plane never reaches upward. The socket's kernel filters
+  follow the live subscriptions; a failed receive is retried after a pause;
+  `close()` completes queued sends with `closed` and keeps the subscriptions
+  for the next `open()`.
+- `loopback_bus` and `loopback_transport` are an in-memory bus: a frame from
+  one endpoint reaches the subscribers of the others, as between sockets on
+  vcan, and `fail_next_send()` injects failures. They are public, so device
+  applications can test their own logic without an interface.
 - Everything of one client runs on one strand. Periodic work (SYNC,
   heartbeat, RPDOs, watch polling) runs on a `steady_timer` per producer;
   there is no `_run` loop polling futures.
-- Bus error frames (`CAN_RAW_ERR_FILTER`) were deferred to this work: they
-  change what a receive returns, so they are settled together with the
-  transport interface.
+- Bus error frames (`CAN_RAW_ERR_FILTER`) and interface state are not in the
+  transport yet; see [Open questions](#open-questions).
 
 ## Client and remote nodes (stage 2)
 
@@ -333,10 +352,12 @@ Raspberry Pi, `canup` interactively on a PC.
 | 2026-10-05 | Boost: follow recent releases and use their features; older distribution packages are not a target |
 | 2026-10-05 | The per-device object is `remote_node`, not `server` |
 | 2026-10-05 | cannet calls `find_package(Boost 1.90 CONFIG REQUIRED)` and the top-level project supplies Boost (one Asio per process); a standalone build falls back to a pinned fetch of 1.90 |
+| 2026-10-05 | Transport: a subscription carries its filter and ends on destruction; failures come as `transport_error`; a full TX queue is reported, not retried; the loopback bus is public |
 
 ## Open questions
 
-1. **Bus error frames**: how they surface through `transport` (stage 0).
+1. **Bus error frames and interface state**: how they surface through
+   `transport`. Today a failed receive is retried silently after a pause.
 2. **A dictionary for the CLI**: `watch` and `od-verify` need one (stage 5).
 3. **A single source for the dictionary** (firmware and host): revisit once
    `od-verify` exists, if the duplication hurts.

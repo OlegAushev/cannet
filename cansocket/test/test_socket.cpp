@@ -1,6 +1,6 @@
 #include <cansocket/raw/socket.hpp>
 
-#include "vcan.hpp"
+#include <cannet_test/vcan.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 

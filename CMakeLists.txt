@@ -76,6 +76,12 @@ if(CANNET_BUILD_TESTS)
     enable_testing()
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
     include(catch2)
+
+    # Helpers shared by the test suites, included as <cannet_test/...>.
+    add_library(cannet_test_support INTERFACE)
+    target_include_directories(cannet_test_support INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
 endif()
 
 # --- config plane: interface bring-up (privileged, needs CAP_NET_ADMIN) ---

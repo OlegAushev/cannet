@@ -1,7 +1,7 @@
 #include <cansocket/raw/async_socket.hpp>
 #include <cansocket/raw/socket.hpp>
 
-#include "vcan.hpp"
+#include <cannet_test/vcan.hpp>
 
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/cancel_after.hpp>

@@ -57,12 +57,14 @@ what privileges they need. A plane never reaches upward.
   protocols.
 - `canopen/` (`namespace cannet::canopen`) — protocol plane over the
   transport, unprivileged. Routing by COB-ID *inside* one protocol is normal
-  and belongs here. Present today: the wire data layer only — `types.hpp`
-  (node ids, predefined connection set, NMT), `sdo.hpp` (expedited SDO
-  codecs), `od.hpp` (the consteval-validated object dictionary and its
-  values), `od_format.hpp` (text conversion for UI and CLI). Pure functions
-  and constexpr data: no I/O, no state, no dependency on cansocket yet. The
-  transport binding, the client and its services build on top.
+  and belongs here. Present today: the wire data layer — `types.hpp` (node
+  ids, predefined connection set, NMT), `sdo.hpp` (expedited SDO codecs),
+  `od.hpp` (the consteval-validated object dictionary and its values),
+  `od_format.hpp` (text conversion for UI and CLI), all pure functions and
+  constexpr data — and the transport the services talk to: `transport.hpp`
+  (the interface: send, filtered subscriptions), `raw_transport.hpp` (over
+  `cannet::raw::async_socket`) and `loopback.hpp` (an in-memory bus for
+  tests). The client and its services build on top.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire
