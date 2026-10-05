@@ -13,6 +13,8 @@ cmake --build --preset debug
 Each library is a subdirectory holding its own `CMakeLists.txt`, public
 headers under `include/<lib>/`, sources under `src/`, and a CLI diagnostic
 tool under `tool/` that is built only in a standalone build (`CANNET_STANDALONE`).
+Plans and design documents live in `docs/`; the CANopen stack's stages,
+decisions and open questions are in `docs/canopen-plan.md`.
 
 Warning and hardening policy lives in one `cannet_build_config` INTERFACE
 target at the root and is attached **PRIVATE** to every cannet target: a
@@ -76,18 +78,6 @@ Rules:
   plane it belongs to, what privileges it needs, and its thread model.
 - Public headers are `.hpp` and are included as `<lib/path/name.hpp>`, never
   by relative path.
-
-## Collaboration style
-
-- Work in steps: when asked a design question, answer with a concrete proposal
-  and wait for explicit approval before editing. Apply edits without re-asking
-  only when the user says to proceed.
-- The user often edits/reformats files between turns and stages changes
-  themselves — check `git status`/diff before editing and never revert their
-  on-disk changes.
-- cannet is a library with a carefully reviewed API: prefer minimal,
-  well-argued changes; discuss trade-offs (dependencies to be shipped to
-  customers, compile time, diagnostics) when proposing API evolution.
 
 ## Verification
 
