@@ -27,6 +27,12 @@ The set is the fleet's (`-Wall -Wextra -Wpedantic -Wshadow -Wconversion
 `_GLIBCXX_ASSERTIONS` in Debug, `_FORTIFY_SOURCE=3` in optimized builds, and
 `CANNET_SANITIZE=ON` for an ASan+UBSan build.
 
+Asynchronous I/O is Boost.Asio — header-only, Boost 1.90 or later, found by
+`cmake/boost.cmake` and linked through the `cannet_asio` target. An embedding
+project supplies Boost: the application and cannet must share one Asio, since
+two copies cannot share an `io_context`. A standalone build without Boost 1.90
+on the system falls back to a pinned fetch.
+
 cannet is a product in its own right: it is handed to customers whole, so it
 contains nothing device-specific. Per-device applications live outside it and
 depend on it.
@@ -42,8 +48,9 @@ what privileges they need. A plane never reaches upward.
   the library holds no privileges of its own and enforces no interface or
   bitrate whitelist — that is application policy.
 - `cansocket/` (`namespace cannet::raw`) — transport plane: CAN frame I/O over
-  an already-up interface, unprivileged. `cannet::raw::socket` is CAN_RAW
-  today; ISO-TP and J1939 will be sibling types beside it, each in its own
+  an already-up interface, unprivileged. `cannet::raw::socket` (blocking) and
+  `cannet::raw::async_socket` (Boost.Asio) are CAN_RAW today; ISO-TP and
+  J1939 will be sibling types beside them, each in its own
   namespace, never modes of one class: they differ in bind addressing,
   setsockopt space and I/O unit. Every protocol client owns its own fd — the
   kernel fans frames out — so there is no userspace demultiplexer between
@@ -89,7 +96,8 @@ After any substantive change, verify with:
 - Unit tests: `ctest --preset debug` (Catch2, one CTest entry per TEST_CASE).
   Tests are standalone-build only (`CANNET_BUILD_TESTS`); Catch2 comes from
   the system if installed, otherwise `cmake/catch2.cmake` fetches a pinned
-  version on the first configure.
+  version on the first configure. Tests that need a live interface use
+  `vcan0` and skip when it is not up; no test sends on a real interface.
 - Compile-time contracts (the consteval dictionary validation, `node_id`
   literals) need *negative* checks too: small `g++ -std=c++23 -fsyntax-only`
   programs in the session scratchpad that must fail, one malformed case per

@@ -66,6 +66,11 @@ if(CANNET_SANITIZE)
         -fsanitize=address,undefined)
 endif()
 
+# --- Boost.Asio: asynchronous I/O for the transport and protocol planes ---
+# Included by path, not through CMAKE_MODULE_PATH: an embedding project's
+# module path must not shadow it.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/boost.cmake)
+
 # --- tests ---
 if(CANNET_BUILD_TESTS)
     enable_testing()

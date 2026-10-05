@@ -1,13 +1,23 @@
-// cansock — CLI diagnostic tool over cannet::raw::socket.
+// cansock — CLI diagnostic tool over cannet::raw.
 //
 // The interface must already be up (see canup); no privileges required.
-// dump: print incoming frames until interrupted (Ctrl+C).
-// send: transmit one frame; id > 0x7FF selects an extended (29-bit) id.
+// dump: print incoming frames until interrupted (Ctrl+C); runs on
+//       cannet::raw::async_socket.
+// send: transmit one frame on cannet::raw::socket; id > 0x7FF selects an
+//       extended (29-bit) id.
 
+#include <cansocket/raw/async_socket.hpp>
 #include <cansocket/raw/socket.hpp>
 
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/signal_set.hpp>
+
 #include <charconv>
+#include <csignal>
 #include <cstdint>
+#include <exception>
 #include <optional>
 #include <print>
 #include <string_view>
@@ -48,21 +58,59 @@ void print_frame(can_frame const& frame)
   std::print("\n");
 }
 
-int dump(cannet::raw::socket& socket)
+void report_open_failure(std::string_view iface, cannet::raw::socket_error e)
 {
-  using namespace std::chrono_literals;
+  std::print(stderr,
+             "cansock: failed to open {}: {}\n",
+             iface,
+             cannet::raw::to_string(e));
+}
+
+boost::asio::awaitable<int> receive_loop(cannet::raw::async_socket& socket)
+{
   while (true) {
-    auto const frame = socket.recv(500ms);
-    if (frame) {
-      print_frame(*frame);
-    }
-    else if (frame.error() != cannet::raw::socket_error::recv_timeout) {
+    auto const frame = co_await socket.async_receive();
+    if (!frame) {
+      if (frame.error() == cannet::raw::socket_error::cancelled) {
+        co_return 0; // interrupted
+      }
       std::print(stderr,
                  "cansock: dump failed: {}\n",
                  cannet::raw::to_string(frame.error()));
-      return 1;
+      co_return 1;
     }
+    print_frame(*frame);
   }
+}
+
+int dump(std::string_view iface)
+{
+  boost::asio::io_context io;
+  cannet::raw::async_socket socket{io.get_executor()};
+  if (auto const result = socket.open(iface); !result) {
+    report_open_failure(iface, result.error());
+    return 1;
+  }
+
+  // Ctrl+C ends the dump cleanly: cancelling the socket completes the
+  // pending receive.
+  boost::asio::signal_set signals{io, SIGINT, SIGTERM};
+  signals.async_wait([&socket](boost::system::error_code ec, int) {
+    if (!ec) {
+      socket.cancel();
+    }
+  });
+
+  int status = 1;
+  boost::asio::co_spawn(io,
+                        receive_loop(socket),
+                        [&](std::exception_ptr error, int result) {
+                          boost::system::error_code ignored;
+                          static_cast<void>(signals.cancel(ignored));
+                          status = error ? 1 : result;
+                        });
+  io.run();
+  return status;
 }
 
 } // namespace
@@ -76,17 +124,8 @@ int main(int argc, char** argv)
   std::string_view const cmd = argv[1];
   std::string_view const iface = argv[2];
 
-  cannet::raw::socket socket;
-  if (auto const result = socket.open(iface); !result) {
-    std::print(stderr,
-               "cansock: failed to open {}: {}\n",
-               iface,
-               cannet::raw::to_string(result.error()));
-    return 1;
-  }
-
   if (cmd == "dump") {
-    return dump(socket);
+    return dump(iface);
   }
 
   if (cmd == "send") {
@@ -101,6 +140,12 @@ int main(int argc, char** argv)
     if (argc - 4 > CAN_MAX_DLEN) {
       std::print(stderr, "cansock: more than {} data bytes\n", CAN_MAX_DLEN);
       return 2;
+    }
+
+    cannet::raw::socket socket;
+    if (auto const result = socket.open(iface); !result) {
+      report_open_failure(iface, result.error());
+      return 1;
     }
 
     can_frame frame{};

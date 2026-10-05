@@ -6,14 +6,15 @@
 // Transport plane only: open/bind, send, recv, kernel-side socket options.
 // Unprivileged — binding a RAW CAN socket requires no capabilities. Interface
 // configuration (bitrate, up/down) is a separate concern; see cannet::canup.
-// Future transports (ISO-TP, J1939) are sibling types beside this one, not
-// modes of it: the kernel protocols differ in addressing and I/O unit.
+// This is the blocking socket; cannet::raw::async_socket is its Boost.Asio
+// sibling and shares its error enum. Future transports (ISO-TP, J1939) are
+// sibling types beside these, not modes of them: the kernel protocols differ
+// in addressing and I/O unit.
 //
-// Thread model: NOT thread-safe. Serialize all access externally — a single
-// thread, or an asio executor/strand (the protocol layer runs everything on
-// one io_context). Frame integrity of concurrent send()/recv() is guaranteed
-// by the kernel (one datagram per syscall), but open()/close() racing
-// against I/O is not: don't do it.
+// Thread model: NOT thread-safe. Serialize all access externally. Frame
+// integrity of concurrent send()/recv() is guaranteed by the kernel (one
+// datagram per syscall), but open()/close() racing against I/O is not: don't
+// do it.
 
 #include <linux/can.h>
 
@@ -36,6 +37,8 @@ enum class socket_error {
                  // later; routine on short-queue devices (SPI controllers)
   recv_timeout,  // no frame within the timeout; not a fault
   recv_failed,
+  cancelled, // async_socket only: the operation was cancelled (cancel(),
+             // close(), or a cancellation slot such as cancel_after)
 };
 
 class socket {
@@ -59,8 +62,8 @@ public:
     return fd_ >= 0;
   }
 
-  // Raw fd for integration with poll()-based loops or asio (e.g. wrapping
-  // in asio::posix::stream_descriptor); -1 when the socket is not open.
+  // Raw fd for integration with poll()-based loops; -1 when the socket is
+  // not open. For Asio, use cannet::raw::async_socket.
   int native_handle() const
   {
     return fd_;

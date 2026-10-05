@@ -1,6 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stage 1 done (`cd2712d`), stage 0 next.
+Status: in progress — stage 1 done (`cd2712d`); stage 0 under way: Boost.Asio,
+`async_socket` and the async `cansock dump` are in, the transport is next.
 Last updated: 2026-10-05.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -70,7 +71,7 @@ canopen/
 
 | # | Content | Verified by | Status |
 |---|---------|-------------|--------|
-| 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | next |
+| 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | in progress: transport left |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client` and `detail/*` except `sdo_client` | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | |
 | 3 | `sdo_client`: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus | |
@@ -121,7 +122,13 @@ dependency is the Boost headers:
 `transport.hpp` on) depend on them; `cannet::canup` does not.
 
 - `cannet::raw::async_socket` takes an executor from outside, opens and binds
-  the socket itself and is the sole owner of the fd.
+  the socket itself and is the sole owner of the fd. Its `async_receive` and
+  `async_send` take any Asio completion token (a callback, `deferred` — the
+  default — or `use_awaitable` in a coroutine, `use_future`, `cancel_after`)
+  and complete with `std::expected<..., socket_error>`; a cancelled
+  operation completes with `socket_error::cancelled`. Each operation owns the
+  frame it moves, so closing or destroying the socket with operations
+  outstanding is safe.
 - The protocol does not know sockets, only a narrow transport interface, like
   emblib's `emb::can::transport` but asynchronous. A virtual call costs
   nothing that matters on a host and buys testability, so this is an
