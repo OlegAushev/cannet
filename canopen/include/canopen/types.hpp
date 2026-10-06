@@ -1,10 +1,11 @@
 #pragma once
 
 // CANopen wire primitives: node ids, the predefined connection set (COB-ID
-// arithmetic), NMT states and commands, payload (de)serialization.
+// arithmetic), NMT states and commands, payload (de)serialization, and the
+// frames of NMT, SYNC, heartbeat and EMCY.
 //
-// Protocol plane, unprivileged, no I/O. Everything here is pure constexpr
-// data — stateless and therefore thread-safe by construction.
+// Protocol plane, unprivileged, no I/O. Everything here is pure: constexpr
+// data and functions without state, thread-safe by construction.
 //
 // Names and semantics mirror the device-side stack (emb::can::canopen) so the
 // two ends of the wire can be read side by side. Roles are inverted: this is
@@ -196,6 +197,50 @@ inline can_frame make_frame(canid_t id, std::uint8_t len, payload const& data)
   std::copy_n(data.begin(), len, frame.data);
   return frame;
 }
+
+// An NMT node control request: a command for one node, or for every node.
+struct nmt_message {
+  nmt_command command;
+  std::optional<node_id> target{}; // nullopt: every node (0 on the wire)
+
+  friend bool operator==(nmt_message const&, nmt_message const&) = default;
+};
+
+// NMT node control from the master: two bytes, the command specifier and the
+// target node id.
+can_frame make_nmt_frame(nmt_message const& message);
+
+// The request an NMT frame carries; nullopt for fewer than two bytes, an
+// unknown command specifier or a target above 127.
+std::optional<nmt_message> decode_nmt(can_frame const& frame);
+
+// SYNC carries no data: no counter, as emblib's sync_producer sends it.
+can_frame make_sync_frame();
+
+// A heartbeat of node `id`: one byte, its NMT state. A boot-up message is a
+// heartbeat reporting `initializing`.
+can_frame make_heartbeat_frame(node_id id, nmt_state state);
+
+// The state a heartbeat reports; nullopt for a frame without data or with an
+// unknown state. Bit 7, the toggle bit of node guarding, is ignored.
+std::optional<nmt_state> decode_heartbeat(can_frame const& frame);
+
+// An emergency message, as emblib's emcy_producer::emit sends it.
+struct emcy_message {
+  std::uint16_t error_code = 0;    // 0x0000: error reset, or no error
+  std::uint8_t error_register = 0; // object 1001h
+  std::array<std::uint8_t, 5> manufacturer{};
+
+  friend bool operator==(emcy_message const&, emcy_message const&) = default;
+};
+
+// EMCY of node `id`: eight bytes, the error code (little-endian), the error
+// register and the manufacturer-specific bytes.
+can_frame make_emcy_frame(node_id id, emcy_message const& message);
+
+// The emergency an EMCY frame carries; nullopt for a frame too short to hold
+// the error code and register. Manufacturer bytes it lacks read as zero.
+std::optional<emcy_message> decode_emcy(can_frame const& frame);
 
 // Human-readable descriptions, for people; the wording may change.
 std::string_view to_string(nmt_state state);

@@ -132,3 +132,90 @@ TEST_CASE("NMT states and commands have stable names", "[types]")
   CHECK(name(nmt_command::reset_node) == "reset_node");
   CHECK(name(nmt_command::reset_communication) == "reset_communication");
 }
+
+TEST_CASE("NMT frames carry the command and its target", "[types]")
+{
+  auto const all = make_nmt_frame(
+      {.command = nmt_command::start, .target = std::nullopt});
+  CHECK(all.can_id == 0x000);
+  CHECK(all.len == 2);
+  CHECK(all.data[0] == 0x01);
+  CHECK(all.data[1] == 0x00);
+  CHECK(decode_nmt(all)
+        == nmt_message{.command = nmt_command::start, .target = std::nullopt});
+
+  auto const one = make_nmt_frame(
+      {.command = nmt_command::reset_node, .target = node_id::literal(5)});
+  CHECK(one.data[0] == 0x81);
+  CHECK(one.data[1] == 0x05);
+  CHECK(decode_nmt(one)
+        == nmt_message{.command = nmt_command::reset_node,
+                       .target = node_id::literal(5)});
+
+  auto short_frame = one;
+  short_frame.len = 1;
+  CHECK_FALSE(decode_nmt(short_frame));
+  auto unknown_command = one;
+  unknown_command.data[0] = 0x03;
+  CHECK_FALSE(decode_nmt(unknown_command));
+  auto bad_target = one;
+  bad_target.data[1] = 0x80;
+  CHECK_FALSE(decode_nmt(bad_target));
+}
+
+TEST_CASE("SYNC carries no data", "[types]")
+{
+  auto const sync = make_sync_frame();
+  CHECK(sync.can_id == 0x080);
+  CHECK(sync.len == 0);
+}
+
+TEST_CASE("a heartbeat carries the node's state", "[types]")
+{
+  auto const hb = make_heartbeat_frame(node_id::literal(1),
+                                       nmt_state::pre_operational);
+  CHECK(hb.can_id == 0x701);
+  CHECK(hb.len == 1);
+  CHECK(hb.data[0] == 0x7F);
+  CHECK(decode_heartbeat(hb) == nmt_state::pre_operational);
+
+  auto const boot_up = make_heartbeat_frame(node_id::literal(1),
+                                            nmt_state::initializing);
+  CHECK(decode_heartbeat(boot_up) == nmt_state::initializing);
+
+  auto toggled = hb; // node guarding sets bit 7 alternately
+  toggled.data[0] = 0x85;
+  CHECK(decode_heartbeat(toggled) == nmt_state::operational);
+
+  auto empty = hb;
+  empty.len = 0;
+  CHECK_FALSE(decode_heartbeat(empty));
+  auto unknown = hb;
+  unknown.data[0] = 0x42;
+  CHECK_FALSE(decode_heartbeat(unknown));
+}
+
+TEST_CASE("an EMCY frame carries code, register and manufacturer bytes",
+          "[types]")
+{
+  emcy_message const rpdo_timeout{.error_code = 0x8250,
+                                  .error_register = 0x10,
+                                  .manufacturer = {1, 2, 3, 4, 5}};
+  auto const frame = make_emcy_frame(node_id::literal(1), rpdo_timeout);
+  CHECK(frame.can_id == 0x081);
+  CHECK(frame.len == 8);
+  CHECK(frame.data[0] == 0x50); // little-endian, as emblib sends it
+  CHECK(frame.data[1] == 0x82);
+  CHECK(frame.data[2] == 0x10);
+  CHECK(frame.data[7] == 5);
+  CHECK(decode_emcy(frame) == rpdo_timeout);
+
+  auto short_frame = frame;
+  short_frame.len = 3;
+  CHECK(decode_emcy(short_frame)
+        == emcy_message{.error_code = 0x8250,
+                        .error_register = 0x10,
+                        .manufacturer = {}});
+  short_frame.len = 2;
+  CHECK_FALSE(decode_emcy(short_frame));
+}
