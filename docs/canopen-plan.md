@@ -2,7 +2,7 @@
 
 Status: in progress — stages 1 (`cd2712d`) and 0 done; stage 2 (the client
 and its services) and stage 3 (the SDO client) next.
-Last updated: 2026-10-05.
+Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
 the protocol whose device half is emblib's `emb::can::canopen`. It replaces
@@ -46,8 +46,14 @@ style, adjusted for a host: heap allocation, `std::function`,
 - **Nothing device-specific.** Dictionaries, PDO layouts and device state
   machines belong to the per-device application.
 - **The application owns the executor.** cannet never owns an `io_context`.
+- **Events first.** A service reports what happens as events, to any number
+  of subscribers. Whoever needs current state builds it from them — a GUI
+  snapshot, history, the sessions of a web daemon; a snapshot read on its own
+  loses whatever happened between two reads.
 - Failures go through `std::expected` with a per-module error enum, as
-  everywhere in cannet.
+  everywhere in cannet. Beside `to_string()`, a phrase for people, every enum
+  a program may branch on — the error enums first — has `name()`: a stable
+  identifier such as `tx_queue_full`, so rewording a message breaks no client.
 
 ## Layout
 
@@ -75,8 +81,8 @@ canopen/
 | 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | done |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client` and `detail/*` except `sdo_client` | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | |
-| 3 | `sdo_client`: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus | |
-| 4 | `service::{watch, config}`, snapshot facade for a GUI, `cannet::canopen-history` | watch polling behaves when the device disappears | |
+| 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | |
+| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
@@ -219,9 +225,9 @@ public:
   detail::sdo_client sdo;
   detail::tpdo_consumer tpdo;      // a handler and a timeout per TPDO
   detail::rpdo_producer rpdo;      // a provider and a period per RPDO
-  detail::hb_consumer heartbeat;   // liveness, remote NMT state
-  detail::emcy_consumer emcy;      // EMCY handler
-  service::watch watch;
+  detail::hb_consumer heartbeat;   // events: liveness, remote NMT state
+  detail::emcy_consumer emcy;      // events: every EMCY
+  service::watch watch;            // events: every polled value
   service::config config;
 };
 ```
@@ -232,29 +238,55 @@ re-registers the filters and COB-IDs of every service through a `post` to the
 strand. ucanopen does this with an `update_node_id()` per service and leaves
 the cleanup of the client's routing table commented out.
 
+Services report through events (see [Principles](#principles)): the heartbeat
+consumer on a change of liveness or of the remote NMT state, the EMCY consumer
+on every emergency, watch (stage 4) on every value. An event takes any number
+of subscribers, each held by a `subscription` as in `transport.hpp`, with
+handlers on the client's strand. A TPDO keeps one handler: decoding belongs to
+the device application, which fans its values out itself.
+
 ## SDO client (stage 3)
 
 ```cpp
-asio::awaitable<std::expected<od_value, sdo_error>> read(od_key, od_value_type);
-asio::awaitable<std::expected<void, sdo_error>> write(od_key, od_value);
-asio::awaitable<std::expected<od_value, sdo_error>> exec(od_key);
-asio::awaitable<std::expected<std::string, sdo_error>> read_string(od_key);
-asio::awaitable<std::expected<void, sdo_error>> restore_default(od_key);
+// Initiating functions, as on cannet::raw::async_socket: any completion
+// token, asio::deferred by default. Each completes with
+// std::expected<T, sdo_error>, T on the right.
+auto async_read(od_key, od_value_type, Token&&);  // od_value
+auto async_write(od_key, od_value, Token&&);      // void
+auto async_exec(od_key, Token&&);                 // od_value
+auto async_read_string(od_key, Token&&);          // std::string
+auto async_restore_default(od_key, Token&&);      // void
 ```
 
-- One request in flight per node (a node has exactly one SDO channel), with a
-  queue behind it.
-- Timeouts and cancellation go through Asio's per-operation cancellation:
-  `cancel_after` for the timeout, a `cancellation_signal` to cancel.
-- `read_string` hides the device's string convention (4-byte expedited chunks
-  up to a NUL) behind one awaitable, where ucanopen has a `StringReader` and a
-  busy-wait in `get()`.
-- `restore_default` is the client half of emblib's
+- One request in flight per node, with a queue behind it. A node has exactly
+  one SDO channel, shared by the whole bus rather than per process, so it
+  serves one SDO client. A second one — the CLI beside a running application —
+  would take the first one's responses, told apart by index and subindex
+  alone, and break its strings (below). `canopen dump` only listens.
+- Each operation `co_spawn`s its coroutine onto the client's strand, so it
+  runs there whatever the caller's executor, and the token decides how the
+  result comes back: awaited in a coroutine — the CLI, the tests, a Beast
+  session on a strand of its own — or `use_future` on a GUI thread. The
+  coroutines stay inside; an `asio::awaitable` in the signature would run on
+  the caller's executor and touch the queue off the client's strand.
+- The response timeout is the client's own (`cancel_after` on the wait for the
+  response) and completes with `timeout`. A caller cancels through the
+  operation's cancellation slot — a `cancellation_signal`, its own
+  `cancel_after` — and gets `cancelled` at once, but the request keeps the
+  channel until its response or its timeout: a late response must not pass
+  for the next request's. A cancelled write may already have been applied;
+  `cancelled` does not mean "not written".
+- `async_read_string` hides the device's string convention (4-byte expedited
+  chunks up to a NUL) behind one operation, where ucanopen has a
+  `StringReader` and a busy-wait in `get()`. It holds the channel until the
+  NUL, even after its caller cancels: the device keeps one string cursor per
+  SDO server (`text_cursor` in emblib's `sdo_server.hpp`). Reading another
+  string object restarts the cursor, and an interrupted read leaves it
+  mid-string, so the next read of that string would silently return only its
+  tail.
+- `async_restore_default` is the client half of emblib's
   `sdo_server::write_restore_default`: an expedited write to `0x1011:04`
   whose data carries the target key (index little-endian, then subindex).
-- A GUI thread gets a facade over `asio::co_spawn(strand, ...,
-  asio::use_future)`: the same operations, returning `std::future`. The CLI
-  and the tests use the coroutines.
 
 One error type instead of ucanopen's three statuses:
 
@@ -273,20 +305,27 @@ struct sdo_error {
   fires these requests round-robin, with no timeout and no back-pressure.
   Here a coroutine walks the enabled objects and sends the next request after
   a response or a timeout; the period is the interval between full passes.
-  Current values go out as a snapshot (`od_value` plus formatted text)
-  through a double buffer, so a GUI takes no lock per frame.
+  Each value goes out as an event (`od_value` plus formatted text). A snapshot
+  behind a double buffer, which a GUI on its own thread reads with no lock per
+  frame, is an adapter subscribed like any other consumer, beside history
+  (`attach`) and the sessions of a web daemon.
 - `service::config` covers the config category: read all parameters, write
   one, save all, restore one to its default.
 - `cannet::canopen-history` keeps signal history for plots inside cannet, so
   that each application does not rewrite it. It is a separate, optional
   target: only a GUI needs it, and a headless application or the CLI does not
   link it. It is built on `boost::circular_buffer`; the point type is cannet's
-  own trivially copyable `sample{float t; float value;}` rather than
-  `boost::geometry`'s (ImPlot reads it through a getter). Changes against
-  ucanopen's log service: the capacity belongs to the instance, not to a
-  static; shrinking truncates instead of clearing; drawing code takes an RAII
-  `reader` instead of a public mutex. Signals are keyed by dictionary entry
-  index. Values come from a node's watch service (`attach`) and from TPDOs the
+  own trivially copyable `sample{double t; double value;}` rather than
+  `boost::geometry`'s (ImPlot reads it through a getter, into `double`
+  anyway). `t` is in seconds, and a process may run for weeks: a `float` `t`
+  would advance in 2 ms steps after 4.5 hours and in 62 ms steps after a week.
+  A `double` `t` makes the struct 16 bytes whatever `value` is, so `value` is
+  a `double` too and holds every `od_value` exactly, where a `float` rounds
+  integers above 2^24. Changes against ucanopen's log service: the capacity
+  belongs to the instance, not to a static; shrinking truncates instead of
+  clearing; drawing code takes an RAII `reader` instead of a public mutex.
+  Signals are keyed by dictionary entry index. Values come from a node's watch
+  service (`attach`, a subscription to its events) and from TPDOs the
   application decodes (`push`).
 
   ```cpp
@@ -299,8 +338,8 @@ struct sdo_error {
     explicit history(history_options opt = {});
     void attach(remote_node&);
     void detach(remote_node&);
-    void push(signal_id, float value);
-    void push(signal_id, float value, std::chrono::steady_clock::time_point);
+    void push(signal_id, double value);
+    void push(signal_id, double value, std::chrono::steady_clock::time_point);
     void set_capacity(std::size_t); // truncates when shrinking
     void clear();
 
@@ -323,6 +362,30 @@ One device first; ucan-monitor is not migrated big-bang. Decide on Flatpak
 before this stage: the Flatpak sandbox gives no CAP_NET_ADMIN, so interface
 bring-up has to happen outside the application — systemd-networkd on a
 Raspberry Pi, `canup` interactively on a PC.
+
+A GUI written in TypeScript, in a browser, turns the application into a
+daemon: Beast and cannet on one `io_context` and one thread — a bus carries at
+most about 8000 full frames a second — and the page talking to it over HTTP
+and a WebSocket. Flatpak then no longer concerns the GUI, and the daemon takes
+on what a desktop GUI never had to:
+
+- Anything open in the browser can reach a port on localhost, and a WebSocket
+  is outside the same-origin policy, while what the daemon writes reaches real
+  equipment. The daemon checks `Origin` on the upgrade and `Host` against DNS
+  rebinding, and requires a token issued per launch; reached from another
+  machine, it needs authentication and TLS.
+- What may be written, and when, is the daemon's policy, not the page's: any
+  client can bypass the page.
+- The daemon holds no CAP_NET_ADMIN. Bring-up stays with systemd-networkd, or
+  goes to a small privileged helper with a whitelist if the UI must offer it.
+- A browser may freeze a background tab, so each session has a bounded send
+  queue: telemetry keeps the latest value, RPC replies are never dropped.
+  Telemetry goes out in batches, plot data as binary frames.
+- The page gets the dictionary from the daemon as JSON and builds parameter
+  tables, watch and the SDO console from it: no third copy of the dictionary
+  in TypeScript. Every `od_value` fits a JS `number` exactly; NaN and ±Inf
+  need a convention. Input travels as text through `parse()`, the same
+  validation as the CLI's.
 
 ## Not carried over from ucanopen
 
@@ -353,11 +416,24 @@ Raspberry Pi, `canup` interactively on a PC.
 | 2026-10-05 | The per-device object is `remote_node`, not `server` |
 | 2026-10-05 | cannet calls `find_package(Boost 1.90 CONFIG REQUIRED)` and the top-level project supplies Boost (one Asio per process); a standalone build falls back to a pinned fetch of 1.90 |
 | 2026-10-05 | Transport: a subscription carries its filter and ends on destruction; failures come as `transport_error`; a full TX queue is reported, not retried; the loopback bus is public |
+| 2026-10-06 | Events first: a service reports to any number of subscribers, each held by a `subscription`; current state (a GUI snapshot, history, a web session) is built from events |
+| 2026-10-06 | SDO operations are initiating functions on completion tokens, run on the client's strand through `co_spawn`; no separate future facade for a GUI |
+| 2026-10-06 | A cancelled SDO request keeps the channel until its response or timeout; strings are read to the NUL even when cancelled; one SDO client per node on a bus |
+| 2026-10-06 | `sample{double t; double value;}`: a `float` time fails a process that runs for weeks |
+| 2026-10-06 | Every enum a program may branch on, the error enums first, has `name()`, a stable identifier, beside `to_string()` |
 
 ## Open questions
 
 1. **Bus error frames and interface state**: how they surface through
-   `transport`. Today a failed receive is retried silently after a pause.
+   `transport`. Today a failed receive is retried silently after a pause. No
+   longer optional: a GUI in a browser sees the bus only through its daemon,
+   so bus-off, error-passive and a downed interface must reach it as events.
+   Needed by stage 6 if its GUI is a web page.
 2. **A dictionary for the CLI**: `watch` and `od-verify` need one (stage 5).
 3. **A single source for the dictionary** (firmware and host): revisit once
    `od-verify` exists, if the duplication hurts.
+4. **A web layer in cannet**: the JSON mapping of the dictionary, values and
+   errors and the RPC over SDO, NMT, config and watch are not device-specific.
+   By the argument that put history in cannet, they are a candidate for an
+   optional target over Boost.Beast and Boost.JSON. Revisit after the pilot,
+   not before.
