@@ -59,6 +59,7 @@ add_library(canopen_tool STATIC
     tool/command_support.cpp
     tool/dump.cpp
     tool/sdo_commands.cpp
+    tool/watch_command.cpp
 )
 target_include_directories(canopen_tool PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/tool

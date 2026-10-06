@@ -5,6 +5,8 @@
 // dump: prints every frame on the bus, decoded, until interrupted (Ctrl+C);
 //       sends nothing.
 // sdo read|write|exec: one SDO request to a node.
+// watch: polls a node's watch objects and prints a table per pass, until
+//        interrupted.
 //
 // Dictionaries, as OD files (canopen/od_file.hpp); these read and write
 // files only, and nothing goes on a bus:
@@ -24,6 +26,8 @@
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
+
+#include <unistd.h>
 
 #include <cerrno>
 #include <charconv>
@@ -61,6 +65,8 @@ int usage()
              "  canopen sdo write <iface> <node> <object> <value>\n"
              "                    [-d <file.od>] [--type <type>]\n"
              "  canopen sdo exec <iface> <node> <object> [-d <file.od>]\n"
+             "  canopen watch <iface> <node> -d <file.od> [<object>...]\n"
+             "                [--period <ms>] [--count <passes>]\n"
              "  canopen od check <file.od>\n"
              "  canopen od from-emblib <od.cpp> [--watch-category <category>]\n"
              "                         [--config-category <category>]\n"
@@ -395,6 +401,44 @@ int sdo(std::string_view what, std::span<std::string_view const> args)
   });
 }
 
+int watch(std::span<std::string_view const> args)
+{
+  auto const parsed = parse_arguments(
+      args,
+      {"-d", "--period", "--count", "--host-id", "--timeout"});
+  if (!parsed || parsed->positional.size() < 2) {
+    return usage();
+  }
+  auto const& positional = parsed->positional;
+  auto const target = device_of(*parsed, positional[1]);
+  if (!target) {
+    return 2;
+  }
+  tool::watch_options watching;
+  for (auto const object : std::span{positional}.subspan(2)) {
+    watching.objects.emplace_back(object);
+  }
+  if (auto const period = option(*parsed, "--period")) {
+    auto const ms = parse_milliseconds("--period", *period);
+    if (!ms) {
+      return 2;
+    }
+    watching.period = *ms;
+  }
+  if (auto const count = option(*parsed, "--count")) {
+    auto const passes = parse_number(*count);
+    if (!passes) {
+      std::print(stderr, "canopen: --count takes a number, not {}\n", *count);
+      return 2;
+    }
+    watching.count = *passes;
+  }
+  watching.redraw = isatty(STDOUT_FILENO) != 0;
+  return run_on_bus(positional[0], [&](transport& bus) {
+    return tool::watch(bus, target->options, watching, terminal());
+  });
+}
+
 int od_check(std::span<std::string_view const> args)
 {
   auto const parsed = parse_arguments(args, {});
@@ -488,6 +532,9 @@ int main(int argc, char** argv)
   auto const rest = std::span{args}.subspan(2);
   if (args[0] == "sdo") {
     return sdo(args[1], rest);
+  }
+  if (args[0] == "watch") {
+    return watch(std::span{args}.subspan(1));
   }
   if (args[0] != "od") {
     return usage();

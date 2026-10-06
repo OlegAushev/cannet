@@ -29,6 +29,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace cannet::canopen::tool {
 
@@ -105,5 +106,21 @@ boost::asio::awaitable<int> sdo_write(transport& bus,
 // nothing.
 boost::asio::awaitable<int>
 sdo_exec(transport& bus, node_options options, std::string object, console io);
+
+struct watch_options {
+  // The objects to poll, by key or by name; empty: every object the watch
+  // service polls, the readable scalars of the watch category.
+  std::vector<std::string> objects{};
+  std::chrono::milliseconds period{500};
+  // How many passes to print before ending; 0: until stopped.
+  unsigned count = 0;
+  // Draw each pass over the screen, for a terminal; else table after table.
+  bool redraw = false;
+};
+
+// watch: polls a node's watch objects through its watch service and prints
+// their readings, a table per pass, until stopped or `count` passes.
+boost::asio::awaitable<int>
+watch(transport& bus, node_options options, watch_options watching, console io);
 
 } // namespace cannet::canopen::tool
