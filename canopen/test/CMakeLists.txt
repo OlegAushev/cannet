@@ -3,6 +3,7 @@ add_executable(canopen-tests
     test_sdo.cpp
     test_od.cpp
     test_od_format.cpp
+    test_event.cpp
     test_loopback.cpp
     test_raw_transport.cpp
 )

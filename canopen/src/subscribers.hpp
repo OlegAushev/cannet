@@ -3,10 +3,10 @@
 // The subscription registry behind every transport: matching, dispatch, and
 // the filter set a transport can hand to the kernel. Private to canopen.
 
+#include <canopen/detail/handler_list.hpp>
 #include <canopen/transport.hpp>
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace cannet::canopen::detail {
@@ -34,18 +34,11 @@ public:
 
 private:
   struct entry {
-    std::uint64_t id;
     can_filter filter;
     transport::frame_handler handler;
-    bool active = true;
   };
 
-  // Entries live on the heap so that a handler keeps its address while the
-  // vector grows under it.
-  std::vector<std::unique_ptr<entry>> entries_;
-  std::uint64_t next_id_ = 1;
-  bool dispatching_ = false;
-  bool has_removed_ = false;
+  handler_list<entry> entries_;
 };
 
 } // namespace cannet::canopen::detail

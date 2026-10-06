@@ -1,4 +1,6 @@
 #include <canopen/raw_transport.hpp>
+#include <canopen/types.hpp>
+#include <cansocket/raw/socket.hpp>
 
 #include <cannet_test/vcan.hpp>
 
@@ -8,6 +10,7 @@
 
 #include <chrono>
 #include <optional>
+#include <span>
 #include <vector>
 
 using namespace cannet::canopen;
@@ -152,4 +155,29 @@ TEST_CASE("subscriptions survive close() and reopen", "[raw_transport][vcan]")
   a.send(frame_with_id(0x1), ignore);
   REQUIRE(run_until(io, [&] { return !received.empty(); }));
   CHECK(received == ids{0x1});
+}
+
+TEST_CASE("the kernel applies a COB-ID filter the same way",
+          "[raw_transport][vcan]")
+{
+  if (!cannet::test::vcan_up()) {
+    SKIP("vcan0 is not up");
+  }
+
+  cannet::raw::socket tx;
+  cannet::raw::socket rx;
+  REQUIRE(tx.open(cannet::test::vcan_iface));
+  REQUIRE(rx.open(cannet::test::vcan_iface));
+  auto const filter = cob_filter(0x181);
+  REQUIRE(rx.set_filters(std::span{&filter, 1}));
+
+  REQUIRE(tx.send(frame_with_id(0x181 | CAN_RTR_FLAG)));
+  REQUIRE(tx.send(frame_with_id(0x181 | CAN_EFF_FLAG)));
+  REQUIRE(tx.send(frame_with_id(0x181)));
+
+  ids received;
+  while (auto const frame = rx.recv(50ms)) {
+    received.push_back(frame->can_id);
+  }
+  CHECK(received == ids{0x181});
 }

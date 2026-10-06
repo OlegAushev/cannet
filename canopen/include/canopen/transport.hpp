@@ -14,6 +14,8 @@
 // completions run there too. With a multi-threaded io_context, give the
 // transport a strand.
 
+#include <canopen/subscription.hpp>
+
 #include <boost/asio/any_io_executor.hpp>
 
 #include <linux/can.h>
@@ -38,26 +40,6 @@ std::string_view to_string(transport_error e);
 // The stable identifier of a `transport_error`: its enumerator's name, such
 // as "tx_queue_full", for logs and formats a program reads.
 std::string_view name(transport_error e);
-
-// Delivery of frames to one handler, in force until the subscription is
-// destroyed or reset(). Move-only; a default-constructed subscription is
-// empty. Outliving its transport is harmless.
-class subscription {
-public:
-  subscription() = default;
-  explicit subscription(std::move_only_function<void()> cancel);
-  ~subscription();
-  subscription(subscription&& other) noexcept;
-  subscription& operator=(subscription&& other) noexcept;
-  subscription(subscription const&) = delete;
-  subscription& operator=(subscription const&) = delete;
-
-  // Ends delivery now; safe from inside the subscription's own handler.
-  void reset();
-
-private:
-  std::move_only_function<void()> cancel_;
-};
 
 class transport {
 public:

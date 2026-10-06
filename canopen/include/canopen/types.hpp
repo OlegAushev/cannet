@@ -178,6 +178,14 @@ constexpr std::optional<canid_t> pdo_cob_id(cob_type pdo,
        + id.get();
 }
 
+// The filter for one COB-ID: it passes exactly the standard data frames with
+// that id. A mask of CAN_SFF_MASK alone would also pass remote frames with
+// the id, and extended frames whose low 11 bits equal it.
+constexpr can_filter cob_filter(canid_t id)
+{
+  return {.can_id = id, .can_mask = CAN_SFF_MASK | CAN_EFF_FLAG | CAN_RTR_FLAG};
+}
+
 // Builds a classic (11-bit id, up to 8 byte) CAN frame. Bytes of `data`
 // beyond `len` are not transmitted.
 inline can_frame make_frame(canid_t id, std::uint8_t len, payload const& data)

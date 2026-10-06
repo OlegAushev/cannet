@@ -12,6 +12,7 @@ add_library(canopen
     src/od.cpp
     src/od_format.cpp
     src/subscribers.cpp
+    src/subscription.cpp
     src/transport.cpp
     src/raw_transport.cpp
     src/loopback.cpp

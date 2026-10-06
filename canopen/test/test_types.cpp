@@ -109,6 +109,15 @@ TEST_CASE("NMT commands carry their wire codes", "[types]")
   CHECK(to_string(nmt_command::reset_node) == "reset node");
 }
 
+TEST_CASE("a COB-ID filter takes standard data frames only", "[types]")
+{
+  constexpr auto filter = cob_filter(0x181);
+  STATIC_CHECK(filter.can_id == 0x181);
+  STATIC_CHECK((filter.can_mask & CAN_SFF_MASK) == CAN_SFF_MASK);
+  STATIC_CHECK((filter.can_mask & CAN_EFF_FLAG) != 0);
+  STATIC_CHECK((filter.can_mask & CAN_RTR_FLAG) != 0);
+}
+
 TEST_CASE("NMT states and commands have stable names", "[types]")
 {
   CHECK(name(nmt_state::initializing) == "initializing");

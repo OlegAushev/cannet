@@ -1,4 +1,5 @@
 #include <canopen/loopback.hpp>
+#include <canopen/types.hpp>
 
 #include <boost/asio/io_context.hpp>
 
@@ -69,6 +70,24 @@ TEST_CASE("a frame reaches the matching subscribers of the other endpoints",
   CHECK(at_b == ids{0x123});
   CHECK(at_b_wide == ids{0x123});
   CHECK(at_c.empty());
+}
+
+TEST_CASE("a COB-ID filter passes standard data frames only", "[loopback]")
+{
+  boost::asio::io_context io;
+  loopback_bus bus{io.get_executor()};
+  loopback_transport a{bus};
+  loopback_transport b{bus};
+
+  ids received;
+  auto const sub = b.subscribe(cob_filter(0x181), record_into(received));
+  a.send(frame_with_id(0x181 | CAN_RTR_FLAG), ignore); // remote frame
+  a.send(frame_with_id(0x181 | CAN_EFF_FLAG), ignore); // extended, same bits
+  a.send(frame_with_id(0x182), ignore);
+  a.send(frame_with_id(0x181), ignore);
+  io.run();
+
+  CHECK(received == ids{0x181});
 }
 
 TEST_CASE("a send completes after delivery, never inside send()", "[loopback]")
