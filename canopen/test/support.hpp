@@ -22,6 +22,22 @@ inline void run_for(boost::asio::io_context& io,
   io.run_for(duration);
 }
 
+// Runs handlers until `done()` holds, for at most `limit`, and returns
+// done(). A test that waits for what it expects, rather than for a time it
+// guessed, holds on a loaded machine too.
+template<typename Done>
+bool run_until(boost::asio::io_context& io,
+               Done done,
+               std::chrono::milliseconds limit = std::chrono::seconds{2})
+{
+  auto const deadline = std::chrono::steady_clock::now() + limit;
+  while (!done() && std::chrono::steady_clock::now() < deadline) {
+    io.restart();
+    io.run_one_for(std::chrono::milliseconds{1});
+  }
+  return done();
+}
+
 // Every frame on the bus, as candump shows it: an endpoint of its own that
 // hears what the others send.
 class bus_log {

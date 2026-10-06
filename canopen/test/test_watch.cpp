@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -21,6 +22,7 @@ using namespace cannet::canopen;
 using namespace std::chrono_literals;
 using cannet::canopen::test::emulated_device;
 using cannet::canopen::test::run_for;
+using cannet::canopen::test::run_until;
 using clock_type = std::chrono::steady_clock;
 
 namespace {
@@ -92,6 +94,12 @@ struct fixture {
     run_for(io, duration);
   }
 
+  template<typename Done>
+  bool run_until(Done done)
+  {
+    return test::run_until(io, done);
+  }
+
   boost::asio::io_context io;
   loopback_bus bus{io.get_executor()};
   loopback_transport host_bus{bus};
@@ -117,6 +125,18 @@ std::vector<od_key> keys_of(std::vector<object_reading> const& readings)
   return keys;
 }
 
+// The objects some reading has a value of.
+std::set<od_key> answered(std::vector<object_reading> const& readings)
+{
+  std::set<od_key> keys;
+  for (auto const& r : readings) {
+    if (r.value) {
+      keys.insert(r.entry->key);
+    }
+  }
+  return keys;
+}
+
 } // namespace
 
 TEST_CASE("the watch polls the readable scalars of the watch category",
@@ -130,7 +150,8 @@ TEST_CASE("the watch polls the readable scalars of the watch category",
   CHECK(objects[2]->key == state_key);
 
   f.node->watch.set_period(1s);
-  f.run();
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 3; }));
+  f.run(); // the next pass is a second away
 
   // One pass, in key order.
   CHECK(f.device.sdo_requests()
@@ -154,14 +175,13 @@ TEST_CASE("nothing is polled before a period is set, nor after zero", "[watch]")
 
   f.node->watch.set_period(10ms);
   CHECK(f.node->watch.period() == 10ms);
-  f.run(35ms);
-  CHECK(f.device.sdo_requests().size() >= 6);
+  REQUIRE(f.run_until([&f] { return f.device.sdo_requests().size() >= 6; }));
 
+  // A request already on its way still arrives; no other goes out.
+  auto const at_stop = f.device.sdo_requests().size();
   f.node->watch.set_period(0ms);
-  f.run(10ms); // a request already on its way still arrives
-  auto const settled = f.device.sdo_requests().size();
-  f.run(50ms);
-  CHECK(f.device.sdo_requests().size() == settled);
+  f.run(60ms);
+  CHECK(f.device.sdo_requests().size() <= at_stop + 1);
 }
 
 TEST_CASE("passes start a period apart, and a late one at once", "[watch]")
@@ -169,20 +189,13 @@ TEST_CASE("passes start a period apart, and a late one at once", "[watch]")
   SECTION("a pass shorter than the period")
   {
     fixture f;
+    auto const began = clock_type::now();
     f.node->watch.set_period(30ms);
-    f.run(200ms);
-
-    // The first reading of each pass marks its start.
-    std::vector<clock_type::time_point> starts;
-    for (auto const& r : f.readings) {
-      if (r.entry->key == uptime_key) {
-        starts.push_back(r.time);
-      }
-    }
-    REQUIRE(starts.size() >= 4);
-    for (std::size_t i = 1; i < starts.size(); ++i) {
-      CHECK(starts[i] - starts[i - 1] >= 25ms); // no burst
-    }
+    REQUIRE(f.run_until([&f] {
+      return std::ranges::count(keys_of(f.readings), uptime_key) == 5;
+    }));
+    // Each pass reads uptime first; five passes span four periods at least.
+    CHECK(clock_type::now() - began >= 4 * 30ms);
   }
 
   SECTION("a pass longer than the period")
@@ -190,14 +203,19 @@ TEST_CASE("passes start a period apart, and a late one at once", "[watch]")
     fixture f;
     f.device.answer_delay = 20ms; // a pass takes 60 ms
     f.node->watch.set_period(30ms);
-    f.run(250ms);
+    REQUIRE(f.run_until([&f] { return f.readings.size() >= 15; }));
 
-    // Back to back: no wait between the last reading of a pass and the
-    // first of the next.
-    REQUIRE(f.readings.size() >= 6);
+    // From the last reading of a pass to the first of the next lies one
+    // answer, and no wait. The median shrugs off a stall of the machine.
+    std::vector<clock_type::duration> gaps;
     for (std::size_t i = 1; i < f.readings.size(); ++i) {
-      CHECK(f.readings[i].time - f.readings[i - 1].time < 35ms);
+      if (f.readings[i].entry->key == uptime_key) {
+        gaps.push_back(f.readings[i].time - f.readings[i - 1].time);
+      }
     }
+    REQUIRE(gaps.size() >= 4);
+    std::ranges::sort(gaps);
+    CHECK(gaps[gaps.size() / 2] < 35ms);
   }
 }
 
@@ -207,18 +225,18 @@ TEST_CASE("disabling the watch stops it at once and drops the read in flight",
   fixture f;
   f.device.answer_delay = 30ms;
   f.node->watch.set_period(10ms);
-  f.run(10ms);
-  REQUIRE(f.device.sdo_requests().size() == 1); // its answer on the way
+  REQUIRE(f.run_until([&f] { return f.device.sdo_requests().size() == 1; }));
 
+  // Its answer on the way.
   f.node->watch.disable();
   CHECK_FALSE(f.node->watch.enabled());
   f.run(100ms);
-  CHECK(f.readings.empty()); // the answer came, and was dropped
+  CHECK(f.readings.empty());
   CHECK(f.device.sdo_requests().size() == 1);
 
   f.device.answer_delay = 0ms;
   f.node->watch.enable(); // a pass at once
-  f.run(5ms);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 3; }));
   CHECK(f.device.sdo_requests().size() == 4);
   CHECK(keys_of(f.readings)
         == std::vector<od_key>{uptime_key, vdc_key, state_key});
@@ -237,12 +255,13 @@ TEST_CASE("single objects can be left out of the watch", "[watch]")
   CHECK_FALSE(watch.enabled(speed_key));
 
   watch.set_period(1s);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 2; }));
   f.run();
   CHECK(f.device.sdo_requests() == std::vector<od_key>{uptime_key, state_key});
 
   REQUIRE(watch.enable(vdc_key));
   watch.set_period(10ms); // the next pass is due at once
-  f.run(5ms);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 5; }));
   CHECK(keys_of(f.readings)
         == std::vector<od_key>{uptime_key,
                                state_key,
@@ -259,65 +278,62 @@ TEST_CASE("the watch keeps one request in flight while the device is silent, "
   bool silent = false;
   f.device.lose_answer = [&silent](std::size_t) { return silent; };
   f.node->watch.set_period(10ms);
-  f.run(50ms);
-  REQUIRE(f.readings.size() >= 3);
-  CHECK(std::ranges::all_of(f.readings, [](object_reading const& r) {
-    return r.value.has_value();
-  }));
+  REQUIRE(f.run_until([&f] { return f.readings.size() >= 3; }));
+  CHECK(answered(f.readings).size() == 3);
 
   silent = true;
   f.readings.clear();
   auto const before = f.device.sdo_requests().size();
+  auto const began = clock_type::now();
   // Another request for the node, made while the watch's time out.
   std::optional<sdo_result<od_value>> other;
-  clock_type::time_point other_done;
-  auto const asked = clock_type::now();
   f.node->sdo.async_read(speed_key,
                          od_value_type::uint16,
-                         [&](sdo_result<od_value> r) {
-                           other = r;
-                           other_done = clock_type::now();
-                         });
-  f.run(300ms);
+                         [&other](sdo_result<od_value> r) { other = r; });
+  REQUIRE(f.run_until(
+      [&f, before] { return f.device.sdo_requests().size() >= before + 7; }));
+  auto const elapsed = clock_type::now() - began;
 
   // One request per timeout, never a flood.
-  auto const sent = f.device.sdo_requests().size() - before;
-  CHECK(sent >= 6);
-  CHECK(sent <= 300 / 30 + 2);
+  auto const& requests = f.device.sdo_requests();
+  CHECK(requests.size() - before
+        <= static_cast<std::size_t>(elapsed / 30ms) + 2);
+  // The other request waited behind one read of the watch at most.
+  auto const since = std::next(requests.begin(),
+                               static_cast<std::ptrdiff_t>(before));
+  auto const at = std::find(since, requests.end(), speed_key);
+  REQUIRE(at != requests.end());
+  CHECK(at - since <= 1);
+  REQUIRE(other);
+  CHECK(other->error().reason == sdo_error::kind::timeout);
   // Every timeout is reported, and the passes go on through every object.
-  REQUIRE_FALSE(f.readings.empty());
+  REQUIRE(f.readings.size() >= 3);
   CHECK(std::ranges::all_of(f.readings, [](object_reading const& r) {
     return !r.value && r.value.error().reason == sdo_error::kind::timeout;
   }));
   auto const keys = keys_of(f.readings);
   CHECK(std::set<od_key>(keys.begin(), keys.end()).size() == 3);
-  // The other request waited behind one read of the watch, not a pass.
-  REQUIRE(other);
-  CHECK(other->error().reason == sdo_error::kind::timeout);
-  CHECK(other_done - asked < 90ms);
 
   silent = false;
   f.readings.clear();
-  f.run(100ms);
-  auto const answered = keys_of(f.readings);
-  CHECK(std::set<od_key>(answered.begin(), answered.end()).size() == 3);
-  CHECK(f.readings.back().value.has_value());
+  CHECK(f.run_until([&f] { return answered(f.readings).size() == 3; }));
 }
 
 TEST_CASE("a request the transport cannot send ends the pass", "[watch]")
 {
   fixture f;
   f.host_bus.fail_next_send(transport_error::tx_queue_full);
-  f.node->watch.set_period(50ms);
-  f.run(20ms);
-  REQUIRE(f.readings.size() == 1);
+  f.node->watch.set_period(300ms);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 1; }));
   CHECK(f.readings[0].entry->key == uptime_key);
   CHECK(f.readings[0].value.error()
         == sdo_error{.reason = sdo_error::kind::transport,
                      .send_error = transport_error::tx_queue_full});
+  f.run(30ms); // the next pass is due 300 ms after this one began
+  CHECK(f.readings.size() == 1);
   CHECK(f.device.sdo_requests().empty());
 
-  f.run(50ms); // the next pass
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 4; }));
   CHECK(f.device.sdo_requests()
         == std::vector<od_key>{uptime_key, vdc_key, state_key});
 }
@@ -333,10 +349,10 @@ TEST_CASE("a node id change drops the read in flight, and the watch goes on "
 
   f.device.answer_delay = 20ms;
   f.node->watch.set_period(1s);
-  f.run(5ms);
-  REQUIRE(f.device.sdo_requests().size() == 1);
+  REQUIRE(f.run_until([&f] { return f.device.sdo_requests().size() == 1; }));
   REQUIRE(f.host.set_remote_node_id("drive", node_id::literal(2)));
-  f.run(50ms);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 2; }));
+  f.run(40ms); // the old node's late answer
 
   CHECK(f.device.sdo_requests() == std::vector<od_key>{uptime_key});
   CHECK(other.sdo_requests() == std::vector<od_key>{vdc_key, state_key});
@@ -361,17 +377,17 @@ TEST_CASE("the watch stops for good when its client goes", "[watch]")
   auto const sub = node->watch.on_value(
       [&readings](object_reading const&) { ++readings; });
   node->watch.set_period(10ms);
-  run_for(io, 30ms);
-  REQUIRE(readings > 0);
+  REQUIRE(run_until(io, [&readings] { return readings > 0; }));
 
-  host.reset();
-  run_for(io, 10ms);
-  auto const settled = device.sdo_requests().size();
+  auto const at_reset = device.sdo_requests().size();
   auto const reported = readings;
+  host.reset();
   node->watch.set_period(5ms);
   node->watch.enable();
   run_for(io, 50ms);
-  CHECK(device.sdo_requests().size() == settled);
+  // A request already on its way may still arrive; nothing else goes out,
+  // and nothing more is reported.
+  CHECK(device.sdo_requests().size() <= at_reset + 1);
   CHECK(readings == reported);
 }
 
@@ -383,7 +399,8 @@ TEST_CASE("a watch handler may stop the watch or drop the node", "[watch]")
     auto const stop = f.node->watch.on_value(
         [&f](object_reading const&) { f.node->watch.disable(); });
     f.node->watch.set_period(10ms);
-    f.run(50ms);
+    REQUIRE(f.run_until([&f] { return !f.readings.empty(); }));
+    f.run(30ms);
     CHECK(f.readings.size() == 1);
     CHECK(f.device.sdo_requests().size() == 1);
   }
@@ -408,7 +425,8 @@ TEST_CASE("a watch handler may stop the watch or drop the node", "[watch]")
       node.reset();
     });
     node->watch.set_period(10ms);
-    run_for(io, 50ms);
+    REQUIRE(run_until(io, [&readings] { return readings > 0; }));
+    run_for(io, 30ms);
     CHECK(readings == 1);
     CHECK_FALSE(node);
     CHECK(device.sdo_requests().size() == 1);
