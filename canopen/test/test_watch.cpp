@@ -1,9 +1,11 @@
 #include <canopen/client.hpp>
 #include <canopen/loopback.hpp>
+#include <canopen/watch_snapshot.hpp>
 
 #include "emulated_device.hpp"
 #include "support.hpp"
 
+#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -16,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <thread>
 #include <vector>
 
 using namespace cannet::canopen;
@@ -447,4 +450,67 @@ TEST_CASE("a node without a watch category polls nothing", "[watch]")
   node->watch.set_period(10ms);
   run_for(io, 30ms);
   CHECK(device.sdo_requests().empty());
+}
+
+TEST_CASE("a watch snapshot keeps the last reading of every object", "[watch]")
+{
+  fixture f;
+  watch_snapshot snap{f.node->watch};
+  {
+    auto const table = snap.read();
+    REQUIRE(table.size() == 3);
+    CHECK(table[0].entry->key == uptime_key);
+    CHECK(table[2].entry->key == state_key);
+    CHECK_FALSE(table[0].value);
+    CHECK_FALSE(table[0].error);
+  }
+
+  f.node->watch.set_period(1s);
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 3; }));
+  clock_type::time_point read_at;
+  {
+    auto const table = snap.read();
+    REQUIRE(table.size() == 3);
+    CHECK(table[1].value == od_value{540.0f});
+    CHECK(table[2].value == od_value{std::uint16_t{3}});
+    CHECK_FALSE(table[1].error);
+    read_at = table[0].time;
+    CHECK(read_at > clock_type::time_point{});
+  }
+
+  // The device falls silent: the errors come, the values read stay.
+  f.device.lose_answer = [](std::size_t) { return true; };
+  f.node->watch.set_period(10ms); // the next pass is due at once
+  REQUIRE(f.run_until([&snap] { return snap.read()[0].error.has_value(); }));
+  auto const table = snap.read();
+  CHECK(table[0].value == od_value{12.5f});
+  CHECK(table[0].error->reason == sdo_error::kind::timeout);
+  CHECK(table[0].time > read_at);
+}
+
+TEST_CASE("a GUI thread reads the watch snapshot while the client runs",
+          "[watch]")
+{
+  fixture f;
+  watch_snapshot snap{f.node->watch};
+  f.node->watch.set_period(5ms);
+  auto work = boost::asio::make_work_guard(f.io);
+  f.io.restart();
+  std::jthread client_thread{[&f] { f.io.run(); }};
+
+  // A frame every 2 ms until every object has a value.
+  bool complete = false;
+  for (int frame = 0; frame < 1000 && !complete; ++frame) {
+    auto const table = snap.read();
+    complete = std::ranges::all_of(table, [](watched_value const& v) {
+      return v.value.has_value();
+    });
+    std::this_thread::sleep_for(2ms);
+  }
+
+  // The snapshot takes events on the client's thread: stop it first.
+  work.reset();
+  f.io.stop();
+  client_thread.join();
+  CHECK(complete);
 }

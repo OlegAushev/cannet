@@ -23,6 +23,7 @@ add_library(canopen
     src/rpdo_producer.cpp
     src/sdo_client.cpp
     src/watch.cpp
+    src/watch_snapshot.cpp
     src/remote_node.cpp
     src/client.cpp
 )

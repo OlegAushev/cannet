@@ -1,7 +1,7 @@
 # CANopen stack plan
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 under
-way: the watch service done; the config service, the GUI snapshot and
+way: the watch service and the GUI snapshot done; the config service and
 signal history next.
 Last updated: 2026-10-06.
 
@@ -66,6 +66,7 @@ canopen/
     loopback.hpp                             # stage 0, done
     subscription.hpp event.hpp
     client.hpp remote_node.hpp setup_error.hpp
+    snapshot.hpp watch_snapshot.hpp          # stage 4, done
     detail/  hb_consumer emcy_consumer
              tpdo_consumer rpdo_producer     # stage 2, done
              sdo_client                      # stage 3, done
@@ -85,7 +86,7 @@ canopen/
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
-| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch done |
+| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch and the snapshot done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
@@ -427,9 +428,17 @@ precision the GUI's to choose, and a web daemon sends numbers;
   The first answer after the device returns is reported as usual. A request
   the transport cannot send ends the pass until the next period: the other
   objects would fail as well, and the watch does not spin.
-- A snapshot behind a double buffer, which a GUI on its own thread reads with
-  no lock per frame, is an adapter subscribed like any other consumer, beside
-  history (`attach`) and the sessions of a web daemon.
+- A GUI on a thread of its own reads state through `snapshot<T>` (done), a
+  triple buffer: the writer, on the client's executor, fills a buffer of its
+  own and swaps it for the one in the middle, and the reader swaps its
+  buffer for the middle one when a newer value waits there. Neither side
+  ever waits for the other; with two buffers, the writer would wait for the
+  reader to finish its frame. `watch_snapshot` is the watch's adapter,
+  subscribed like any other consumer, beside history (`attach`) and the
+  sessions of a web daemon: it keeps, per watched object, the last value,
+  the error of the last read if it failed, and the time, and publishes the
+  table after every reading. The application keeps its own state, such as
+  the values it decodes from TPDOs, in a `snapshot<T>` of its own.
 - `service::config` covers the config category: read all parameters, write
   one, save all, restore one to its default.
 - `cannet::canopen-history` keeps signal history for plots inside cannet, so
@@ -561,6 +570,7 @@ on what a desktop GUI never had to:
 | 2026-10-06 | The SDO timeout is the node's, 500 ms by default |
 | 2026-10-06 | The services built on a dictionary are members of `remote_node` and report reads as `object_reading` events: the value or the error, and the time; no formatted text |
 | 2026-10-06 | The watch keeps one request in flight; its period separates the starts of passes, zero (the default) stops it; a timeout is reported and the pass goes on, a transport failure ends the pass; `disable()` drops the read in flight |
+| 2026-10-06 | A GUI thread reads state through `snapshot<T>`, a triple buffer, so that neither side waits for the other; `watch_snapshot` keeps each watched object's last value, last error and time |
 
 ## Open questions
 
