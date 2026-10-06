@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string_view>
@@ -306,6 +307,75 @@ private:
   std::span<std::uint16_t const> name_order_;
 };
 
+namespace detail {
+
+// What may be wrong with a dictionary: found at compile time for a
+// dictionary<N>, at run time for one read from an OD file (od_file.hpp).
+enum class od_defect : std::uint8_t {
+  empty_name,              // an empty category, subcategory or name
+  duplicate_key,           // two objects at one {index, subindex}
+  duplicate_name,          // two objects with one {category, subcategory, name}
+  unknown_watch_category,  // no object belongs to the watch category
+  unknown_config_category, // no object belongs to the config category
+};
+
+struct od_finding {
+  od_defect defect;
+  std::size_t entry; // the offending entry, in key order; 0 for a category
+};
+
+// Fills `name_order` with the indices of `by_key`, ordered by {category,
+// subcategory, name}.
+constexpr void order_by_name(std::span<od_entry const> by_key,
+                             std::span<std::uint16_t> name_order)
+{
+  for (std::size_t i = 0; i < name_order.size(); ++i) {
+    name_order[i] = static_cast<std::uint16_t>(i);
+  }
+  std::ranges::sort(name_order, std::less{}, name_tuple_at(by_key));
+}
+
+// The first defect of a dictionary whose entries are ordered by key and
+// indexed by name, by order_by_name(); none in a sound one.
+constexpr std::optional<od_finding>
+check_dictionary(dictionary_config config,
+                 std::span<od_entry const> by_key,
+                 std::span<std::uint16_t const> name_order)
+{
+  for (std::size_t i = 0; i < by_key.size(); ++i) {
+    auto const& object = by_key[i].object;
+    if (object.category.empty()
+        || object.subcategory.empty()
+        || object.name.empty()) {
+      return od_finding{od_defect::empty_name, i};
+    }
+    if (i > 0 && by_key[i - 1].key == by_key[i].key) {
+      return od_finding{od_defect::duplicate_key, i};
+    }
+  }
+  for (std::size_t i = 1; i < name_order.size(); ++i) {
+    if (name_tuple(by_key[name_order[i - 1]].object)
+        == name_tuple(by_key[name_order[i]].object)) {
+      return od_finding{od_defect::duplicate_name, name_order[i]};
+    }
+  }
+  auto const has_category = [by_key](std::string_view category) {
+    return std::ranges::any_of(by_key, [category](od_entry const& e) {
+      return e.object.category == category;
+    });
+  };
+  if (!config.watch_category.empty() && !has_category(config.watch_category)) {
+    return od_finding{od_defect::unknown_watch_category, 0};
+  }
+  if (!config.config_category.empty()
+      && !has_category(config.config_category)) {
+    return od_finding{od_defect::unknown_config_category, 0};
+  }
+  return std::nullopt;
+}
+
+} // namespace detail
+
 // A device's object dictionary, validated and indexed at compile time.
 template<std::size_t N>
 class dictionary {
@@ -318,41 +388,25 @@ public:
   {
     std::ranges::copy(entries, entries_.begin());
     std::ranges::sort(entries_, std::less{}, &od_entry::key);
-
-    for (std::size_t i = 0; i < N; ++i) {
-      auto const& object = entries_[i].object;
-      if (object.category.empty()
-          || object.subcategory.empty()
-          || object.name.empty()) {
-        throw "od: entry has an empty category, subcategory or name";
-      }
-      if (i + 1 < N && entries_[i].key == entries_[i + 1].key) {
-        throw "od: duplicate {index, subindex}";
-      }
-      name_order_[i] = static_cast<std::uint16_t>(i);
+    detail::order_by_name(entries_, name_order_);
+    auto const finding = detail::check_dictionary(config_,
+                                                  entries_,
+                                                  name_order_);
+    if (!finding) {
+      return;
     }
-
-    std::ranges::sort(name_order_, std::less{}, [this](std::uint16_t i) {
-      auto const& object = entries_[i].object;
-      return std::tuple{object.category, object.subcategory, object.name};
-    });
-
-    for (std::size_t i = 0; i + 1 < N; ++i) {
-      auto const& lhs = entries_[name_order_[i]].object;
-      auto const& rhs = entries_[name_order_[i + 1]].object;
-      if (lhs.category == rhs.category
-          && lhs.subcategory == rhs.subcategory
-          && lhs.name == rhs.name) {
-        throw "od: duplicate {category, subcategory, name}";
-      }
-    }
-
-    if (!config_.watch_category.empty()
-        && !has_category(config_.watch_category)) {
+    // A throw is no constant expression: each fails the compilation, and
+    // the error shows its line.
+    switch (finding->defect) {
+    case detail::od_defect::empty_name:
+      throw "od: entry has an empty category, subcategory or name";
+    case detail::od_defect::duplicate_key:
+      throw "od: duplicate {index, subindex}";
+    case detail::od_defect::duplicate_name:
+      throw "od: duplicate {category, subcategory, name}";
+    case detail::od_defect::unknown_watch_category:
       throw "od: watch_category names a category no entry belongs to";
-    }
-    if (!config_.config_category.empty()
-        && !has_category(config_.config_category)) {
+    case detail::od_defect::unknown_config_category:
       throw "od: config_category names a category no entry belongs to";
     }
   }
@@ -368,13 +422,6 @@ public:
   }
 
 private:
-  consteval bool has_category(std::string_view category) const
-  {
-    return std::ranges::any_of(entries_, [category](od_entry const& e) {
-      return e.object.category == category;
-    });
-  }
-
   dictionary_config config_;
   std::array<od_entry, N> entries_{};
   std::array<std::uint16_t, N> name_order_{};

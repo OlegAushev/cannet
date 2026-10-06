@@ -1,0 +1,11 @@
+# A drive's dictionary, for the tests of cannet_canopen_dictionary() and
+# the canopen CLI.
+cannet-od 1
+watch_category  watch
+config_category config
+
+1008:00  info    sys    device_name   -    const  string
+2000:02  ctl     sys    clear_errors  -    wo     exec
+3000:01  config  drive  speed         rpm  rw     uint16
+5000:01  watch   sys    uptime        s    ro     float32
+5000:02  watch   elec   Vdc           V    ro     float32

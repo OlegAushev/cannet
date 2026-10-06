@@ -1,0 +1,4 @@
+# Two objects at one key: `canopen od check` must refuse it.
+cannet-od 1
+5000:01  watch  sys  uptime  s  ro  float32
+5000:01  watch  sys  other   s  ro  float32

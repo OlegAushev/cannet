@@ -1,7 +1,8 @@
 # CANopen stack plan
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2, 3 and 4 done; stage 5
-(the CLI `canopen`) next.
+(the CLI `canopen`) under way: dictionaries as OD files done, the bus
+commands next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -61,6 +62,7 @@ style, adjusted for a host: heap allocation, `std::function`,
 canopen/
   include/canopen/
     types.hpp sdo.hpp od.hpp od_format.hpp   # stage 1, done
+    od_file.hpp                              # stage 5, done
     transport.hpp raw_transport.hpp
     loopback.hpp                             # stage 0, done
     subscription.hpp event.hpp
@@ -73,7 +75,8 @@ canopen/
     service/ object_reading watch config     # stage 4, done
   src/ test/
   history/                                   # stage 4, done
-  tool/main.cpp                              # stage 5: CLI `canopen`
+  tool/main.cpp od_tools                     # stage 5: CLI `canopen`
+  cmake/canopen_dictionary.cmake             # stage 5, done
 ```
 
 `cannet::canopen-history` (stage 4, `history/`) is a separate, optional
@@ -88,7 +91,7 @@ target.
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | done |
-| 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
+| 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | in progress: dictionaries as OD files done |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
 Stage 1 went first: the data layer needs no Asio. The transport interface and
@@ -118,9 +121,11 @@ interface is asynchronous. Stages 2 and 3 can run in parallel once
 In ucanopen the dictionary is two `std::map`s built at runtime, keyed by
 `string_view`s into memory the maps do not own.
 
-The dictionary is still written twice: in the firmware and in the device
-application on the host. Stage 5's `od-verify` walks a dictionary over SDO and
-checks readability, types and aborts against a live device.
+The dictionary used to be written twice, in the firmware and in the device
+application on the host. Since stage 5 the firmware's table is its only
+source: the application compiles in an OD file made from it (see
+[CLI](#cli-stage-5)), and `od-verify` walks a dictionary over SDO and checks
+readability, types and aborts against a live device.
 
 ## Transport and execution model (stage 0)
 
@@ -532,8 +537,44 @@ in flight and reported each timeout, and history recorded NaN.
 
 `canopen` is to the protocol what `cansock` is to the transport: `dump`,
 `sdo read|write|exec`, `watch`, `nmt`, `od-verify`. `watch` and `od-verify`
-work from a device dictionary, and cannet ships none; how the CLI gets one is
-open.
+work from a device dictionary, and cannet ships none.
+
+### Dictionaries as files (done)
+
+The CLI cannot have a dictionary compiled in, so it reads one from an OD
+file (`od_file.hpp`): text, one object per line, in the order of emblib's
+rows, with the access and the type by their `name()`s, the stable
+identifiers made for what a program reads.
+
+```
+cannet-od 1
+watch_category  watch
+config_category config
+1008:00  info    sys         device_name  -  const  string
+5000:01  watch   sys         uptime       s  ro     float32
+3003:01  config  protection  uvp_dc       V  rw     float32
+```
+
+`parse_od_file()` gives a `loaded_dictionary`, whose view is a
+`dictionary_view` like a compiled-in one's, and checks it with the same code
+as `dictionary<N>`'s consteval constructor (`detail::check_dictionary`),
+each error tied to its line; `to_od_file()` writes one, columns aligned. Not
+JSON: a web page needs JSON as output, which a `dictionary_view` gives,
+while lines are simpler to make, read and compare in a diff. Not EDS
+(CiA 306): it knows no categories and no units, and may come later as an
+export for third-party tools.
+
+The firmware's table is the only source. `canopen od from-emblib` reads an
+emblib firmware's `od.cpp`: emblib states each row's type, although the
+binding determines it, "so that a text parser can generate a host's table",
+and the access follows from the binding (`od_ro`, `param::rw`, `od_exec`).
+The generator stays in cannet for now. A device application compiles the
+file in with `cannet_canopen_dictionary(<target> FILE <file.od> NAME
+<identifier>)`, which generates a header holding `inline constexpr auto
+<identifier> = cannet::canopen::dictionary{...}` with `canopen od header`,
+built for the purpose in a project that embeds cannet; the dictionary is
+checked again when compiled. `od-verify` catches a file grown stale against
+the firmware. The adpt-etk-inverter's table imports whole: 166 objects.
 
 ## Pilot application (stage 6)
 
@@ -623,6 +664,8 @@ on what a desktop GUI never had to:
 | 2026-10-06 | The config service types reads and writes by the dictionary and does not send a value of another type; storing and restoring all are CiA 301's 1010h:01 and 1011h:01 with "save" and "load"; reading all gives up after three timeouts in a row |
 | 2026-10-06 | A service's operations keep their callers' order among the SDO client's: on the client's executor, a service queues its requests without a hop |
 | 2026-10-06 | A history signal is a node's object, keyed by the node's name and the object's key; each is a `circular_buffer_space_optimized`; a failed watch read is recorded as NaN |
+| 2026-10-06 | A dictionary outside the code is an OD file, a text format cannet defines: one object per line, the access and type by their `name()`s; it is read with `dictionary<N>`'s checks, its errors tied to lines |
+| 2026-10-06 | The firmware's table is the dictionary's only source: `canopen od from-emblib` makes the OD file (the generator in cannet for now), `cannet_canopen_dictionary()` compiles it into the application through a generated header, `od-verify` catches a stale file |
 
 ## Open questions
 
@@ -631,10 +674,7 @@ on what a desktop GUI never had to:
    longer optional: a GUI in a browser sees the bus only through its daemon,
    so bus-off, error-passive and a downed interface must reach it as events.
    Needed by stage 6 if its GUI is a web page.
-2. **A dictionary for the CLI**: `watch` and `od-verify` need one (stage 5).
-3. **A single source for the dictionary** (firmware and host): revisit once
-   `od-verify` exists, if the duplication hurts.
-4. **A web layer in cannet**: the JSON mapping of the dictionary, values and
+2. **A web layer in cannet**: the JSON mapping of the dictionary, values and
    errors and the RPC over SDO, NMT, config and watch are not device-specific.
    By the argument that put history in cannet, they are a candidate for an
    optional target over Boost.Beast and Boost.JSON. Revisit after the pilot,

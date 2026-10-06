@@ -12,7 +12,9 @@ cmake --build --preset debug
 
 Each library is a subdirectory holding its own `CMakeLists.txt`, public
 headers under `include/<lib>/`, sources under `src/`, and a CLI diagnostic
-tool under `tool/` that is built only in a standalone build (`CANNET_STANDALONE`).
+tool under `tool/` that is built only in a standalone build (`CANNET_STANDALONE`)
+— except that a project embedding cannet builds `canopen` when
+`cannet_canopen_dictionary()` needs it to generate a dictionary header.
 Plans and design documents live in `docs/`; the CANopen stack's stages,
 decisions and open questions are in `docs/canopen-plan.md`.
 
@@ -60,8 +62,11 @@ what privileges they need. A plane never reaches upward.
   and belongs here. Present today: the wire data layer — `types.hpp` (node
   ids, predefined connection set, NMT), `sdo.hpp` (expedited SDO codecs),
   `od.hpp` (the consteval-validated object dictionary and its values),
-  `od_format.hpp` (text conversion for UI and CLI), all pure functions and
-  constexpr data — and the transport the services talk to: `transport.hpp`
+  `od_format.hpp` (text conversion for UI and CLI), `od_file.hpp`
+  (dictionaries as OD files, one object per line, the form a firmware's
+  table is imported in and an application compiles its dictionary from),
+  all pure functions and constexpr data — and the transport the services
+  talk to: `transport.hpp`
   (the interface: send, filtered subscriptions), `raw_transport.hpp` (over
   `cannet::raw::async_socket`) and `loopback.hpp` (an in-memory bus for
   tests); and over the transport the client: `client.hpp` (the host's own
@@ -131,7 +136,7 @@ After any substantive change, verify with:
   reproducible checks. The root `.clangd` rewrites `-std=c++23` to
   `-std=c++2b` so clangd accepts the g++ database.
 - Manual driving of the CLIs (`build/debug/cansocket/cansock`,
-  `build/debug/canup/canup`)
+  `build/debug/canup/canup`, `build/debug/canopen/canopen`)
   against a `vcan0` interface. Creating vcan and any `canup up/down` are
   privileged operations — never run them unless asked.
 
