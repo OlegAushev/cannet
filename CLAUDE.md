@@ -64,7 +64,11 @@ what privileges they need. A plane never reaches upward.
   constexpr data — and the transport the services talk to: `transport.hpp`
   (the interface: send, filtered subscriptions), `raw_transport.hpp` (over
   `cannet::raw::async_socket`) and `loopback.hpp` (an in-memory bus for
-  tests). The client and its services build on top.
+  tests); and over the transport the client: `client.hpp` (the host's own
+  node: NMT master, SYNC and heartbeat producer, the registry of remote
+  nodes), `remote_node.hpp` (one device: heartbeat, EMCY, TPDO and RPDO
+  services) and `event.hpp` (how services report what happens). The SDO
+  client and the higher-level services come next.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire

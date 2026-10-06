@@ -1,10 +1,10 @@
 # cannet::canopen — protocol plane: CANopen over the transport plane.
 #
 # The wire data layer (types, SDO codecs, object dictionary, text
-# conversion: pure functions and constexpr data) and the transport the
+# conversion: pure functions and constexpr data); the transport the
 # services talk to — an interface with a CAN_RAW implementation over
-# cannet::cansocket and an in-memory one for tests. The client and its
-# services land on top of this.
+# cannet::cansocket and an in-memory one for tests; and on top of it the
+# client, its remote nodes and their services.
 
 add_library(canopen
     src/types.cpp
@@ -16,6 +16,13 @@ add_library(canopen
     src/transport.cpp
     src/raw_transport.cpp
     src/loopback.cpp
+    src/timers.cpp
+    src/hb_consumer.cpp
+    src/emcy_consumer.cpp
+    src/tpdo_consumer.cpp
+    src/rpdo_producer.cpp
+    src/remote_node.cpp
+    src/client.cpp
 )
 
 add_library(cannet::canopen ALIAS canopen)

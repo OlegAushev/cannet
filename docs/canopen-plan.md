@@ -1,7 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stages 1 (`cd2712d`) and 0 done; stage 2 (the client
-and its services) and stage 3 (the SDO client) next.
+Status: in progress — stages 1 (`cd2712d`), 0 and 2 done; stage 3 (the SDO
+client) next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -63,10 +63,11 @@ canopen/
     types.hpp sdo.hpp od.hpp od_format.hpp   # stage 1, done
     transport.hpp raw_transport.hpp
     loopback.hpp                             # stage 0, done
-    client.hpp remote_node.hpp               # stage 2
-    detail/  nmt_master sync_producer hb_producer hb_consumer
-             tpdo_consumer rpdo_producer emcy_consumer   # stage 2
-             sdo_client                                  # stage 3
+    subscription.hpp event.hpp
+    client.hpp remote_node.hpp setup_error.hpp
+    detail/  hb_consumer emcy_consumer
+             tpdo_consumer rpdo_producer     # stage 2, done
+             sdo_client                      # stage 3
     service/ watch config                    # stage 4
   src/ test/
   tool/main.cpp                              # stage 5: CLI `canopen`
@@ -80,7 +81,7 @@ canopen/
 |---|---------|-------------|--------|
 | 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | done |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
-| 2 | `client` and `detail/*` except `sdo_client` | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | |
+| 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
@@ -174,19 +175,20 @@ dependency is the Boost headers:
   one endpoint reaches the subscribers of the others, as between sockets on
   vcan, and `fail_next_send()` injects failures. They are public, so device
   applications can test their own logic without an interface.
-- Everything of one client runs on one strand. Periodic work (SYNC,
+- Everything of one client runs on the transport's executor, which is a
+  strand when the `io_context` has several threads. Periodic work (SYNC,
   heartbeat, RPDOs, watch polling) runs on a `steady_timer` per producer;
   there is no `_run` loop polling futures.
 - Bus error frames (`CAN_RAW_ERR_FILTER`) and interface state are not in the
   transport yet; see [Open questions](#open-questions).
 
-## Client and remote nodes (stage 2)
+## Client and remote nodes (stage 2, done)
 
 In CiA 301 terms the host is the SDO client and each device an SDO server. The
 host side has two kinds of objects:
 
 - `client` — the host's own node on one bus: NMT master, SYNC producer, its
-  own heartbeat. One per bus.
+  own heartbeat, and the registry of remote nodes. One per bus.
 - `remote_node` — one per device on that bus: the host's handle to the device,
   holding its node id, its dictionary view and the services addressed to it.
 
@@ -197,53 +199,103 @@ the device's own stack, and python-canopen names the same aggregate
 
 ```cpp
 struct client_options {
-  node_id id;
-  std::chrono::milliseconds sync_period{1000};
-  bool sync_enabled{true};
-  std::chrono::milliseconds heartbeat_period{1000};
+  node_id id;                                       // ucanopen used 127
+  std::chrono::milliseconds heartbeat_period{1000}; // zero: not sent
+  std::chrono::milliseconds sync_period{0};         // zero: not sent
 };
 
 class client {
 public:
   client(transport& bus, client_options opt);
-  void start();
+  void start(); // what the host transmits: SYNC, its heartbeat, RPDOs
   void stop();
 
   // Fails when the node id or the name is taken.
   std::expected<std::shared_ptr<remote_node>, setup_error>
   add_node(remote_node_options);
+  std::shared_ptr<remote_node> find_node(std::string_view name) const;
   std::expected<void, setup_error> set_node_id(node_id);
   std::expected<void, setup_error> set_remote_node_id(std::string_view name,
                                                       node_id);
+  void set_heartbeat_period(std::chrono::milliseconds);
+  void set_sync_period(std::chrono::milliseconds);
 
-  void nmt(nmt_command);          // broadcast
-  void nmt(node_id, nmt_command); // addressed; ucanopen has no such call
+  // Any thread; complete with std::expected<void, transport_error>.
+  auto async_nmt(nmt_command, Token&&);          // every node
+  auto async_nmt(node_id, nmt_command, Token&&); // one; ucanopen has no such call
 };
 
 class remote_node {
 public:
-  detail::sdo_client sdo;
-  detail::tpdo_consumer tpdo;      // a handler and a timeout per TPDO
-  detail::rpdo_producer rpdo;      // a provider and a period per RPDO
-  detail::hb_consumer heartbeat;   // events: liveness, remote NMT state
-  detail::emcy_consumer emcy;      // events: every EMCY
-  service::watch watch;            // events: every polled value
-  service::config config;
+  detail::hb_consumer heartbeat; // {alive, state}; events on every change
+  detail::emcy_consumer emcy;    // events: every EMCY
+  detail::tpdo_consumer tpdo;    // per TPDO: handler, timeout, on_timeout
+  detail::rpdo_producer rpdo;    // per RPDO: provider, period; enable/disable
+  // stage 3: detail::sdo_client sdo; stage 4: service::watch, service::config
 };
 ```
 
 The services are public subobjects, as in ucanopen, and the object aggregates
-them the way emblib's `server` aggregates its `detail::*`. Changing a node id
-re-registers the filters and COB-IDs of every service through a `post` to the
-strand. ucanopen does this with an `update_node_id()` per service and leaves
-the cleanup of the client's routing table commented out.
+them the way emblib's `server` aggregates its `detail::*`. The client's own
+producers are no types of their own: SYNC and the heartbeat go out through a
+private periodic sender, NMT through `async_nmt()`.
 
-Services report through events (see [Principles](#principles)): the heartbeat
-consumer on a change of liveness or of the remote NMT state, the EMCY consumer
-on every emergency, watch (stage 4) on every value. An event takes any number
-of subscribers, each held by a `subscription` as in `transport.hpp`, with
-handlers on the client's strand. A TPDO keeps one handler: decoding belongs to
-the device application, which fans its values out itself.
+- **Execution.** The client and its nodes run on the transport's executor and,
+  like the transport, are not thread-safe. Only `get_executor()` and the
+  initiating functions `async_*` may be called from any thread: they start on
+  the client's executor themselves and complete on the handler's. A GUI on a
+  thread of its own sends commands through `async_*`, changes settings with a
+  `post()` and follows state through events.
+- **What runs when.** `start()` and `stop()` govern only what the host
+  transmits; reception and timeouts run from a node's registration on.
+  Periodic frames go out at a fixed rate, skip the ticks missed while the
+  executor was busy instead of sending them in a burst, and keep at most one
+  frame per producer in the transport's queue.
+- **Events.** `event<Args...>` takes any number of subscribers, each held by a
+  `subscription` as in `transport.hpp`, with handlers on the client's
+  executor. Emissions keep their order: one made from inside a handler waits
+  until the current one has reached every handler. A TPDO keeps one handler:
+  decoding belongs to the device application, which fans its values out
+  itself.
+- **Heartbeat.** The status tells liveness and the reported NMT state apart;
+  ucanopen's `good()` meant alive *and* operational, so a node in
+  pre-operational looked the same as a missing one. Before the first
+  heartbeat the node is not alive and has no state. Every change is an event,
+  and so is every boot-up, so a node that rebooted within the timeout is not
+  missed. The timeout is the node's, 2000 ms by default as in ucanopen; zero
+  never declares the node lost.
+- **TPDOs.** `tpdo_config` is laid out as emblib's consumer config
+  (`rpdo_config`): a handler, a timeout and `on_timeout`, which runs once per
+  loss; the next frame recovers silently. Monitoring starts at setup, so a
+  TPDO that never arrives times out too; ucanopen counted it as good for the
+  first timeout. A frame shorter than the PDO's mapped length (`len`, 8 by
+  default) is dropped, as CiA 301 has it; ucanopen padded it with zeros.
+- **RPDOs.** `rpdo_config` is laid out as emblib's producer config
+  (`tpdo_config`): a provider, called right before each send, and a period.
+  Each RPDO and the node as a whole can be disabled; a disabled RPDO keeps its
+  setup and its provider rests. RPDOs go out whether or not the node is alive:
+  the adpt-etk-inverter firmware times out RPDO1 after 300 ms and latches a
+  critical fault after 1 s without it. An interlock such as h2-hess's, which
+  silences an RPDO while another master is heard, is the application's: it
+  subscribes to that master's heartbeat and disables the RPDO.
+- **Node ids.** A node id change runs on the client's executor, moves every
+  service first and only then notifies: the heartbeat status resets, and every
+  TPDO that had not timed out does so at once. ucanopen changed ids from the
+  GUI thread without synchronization, kept the routing table's cleanup
+  commented out and reported the old node as alive for up to 2 s.
+- **Filters.** Every subscription to a COB-ID takes standard data frames only
+  (`cob_filter()`); a mask of `CAN_SFF_MASK` alone would also pass remote
+  frames and extended frames with the same low 11 bits.
+- **SYNC** carries no counter, as emblib's `sync_producer` sends it, and is
+  off by default: emblib's devices do not consume it. A zero period disables
+  any producer, so `sync_enabled` is gone. The host's heartbeat reports
+  operational.
+- Setting up a PDO anew from inside its own handler or provider is safe.
+
+Verified on the loopback bus against an emulated device that behaves as
+emblib does in the firmware (it starts operational, keeps its heartbeat in
+every state, sends TPDOs and takes RPDOs only while operational), and on
+vcan, where `candump` shows SYNC, the heartbeat, NMT and RPDOs.
 
 ## SDO client (stage 3)
 
@@ -263,12 +315,12 @@ auto async_restore_default(od_key, Token&&);      // void
   serves one SDO client. A second one — the CLI beside a running application —
   would take the first one's responses, told apart by index and subindex
   alone, and break its strings (below). `canopen dump` only listens.
-- Each operation `co_spawn`s its coroutine onto the client's strand, so it
+- Each operation `co_spawn`s its coroutine onto the client's executor, so it
   runs there whatever the caller's executor, and the token decides how the
   result comes back: awaited in a coroutine — the CLI, the tests, a Beast
   session on a strand of its own — or `use_future` on a GUI thread. The
   coroutines stay inside; an `asio::awaitable` in the signature would run on
-  the caller's executor and touch the queue off the client's strand.
+  the caller's executor and touch the queue off the client's.
 - The response timeout is the client's own (`cancel_after` on the wait for the
   response) and completes with `timeout`. A caller cancels through the
   operation's cancellation slot — a `cancellation_signal`, its own
@@ -389,8 +441,10 @@ on what a desktop GUI never had to:
 
 ## Not carried over from ucanopen
 
-- `bsclog`, a hard dependency on the GUI's logger; it becomes an optional
-  `std::function<void(level, std::string_view)>` in the client options.
+- `bsclog`, a hard dependency on the GUI's logger. An optional
+  `std::function<void(level, std::string_view)>` in the client options can
+  replace it once there is something to log beyond events; stage 2 has
+  nothing.
 - `boost::geometry` points in the log service (replaced by `sample`).
 - The `SdoSubscriber`/`TpdoPublisher` hierarchies with manual
   register/unregister.
@@ -421,6 +475,15 @@ on what a desktop GUI never had to:
 | 2026-10-06 | A cancelled SDO request keeps the channel until its response or timeout; strings are read to the NUL even when cancelled; one SDO client per node on a bus |
 | 2026-10-06 | `sample{double t; double value;}`: a `float` time fails a process that runs for weeks |
 | 2026-10-06 | Every enum a program may branch on, the error enums first, has `name()`, a stable identifier, beside `to_string()` |
+| 2026-10-06 | The client runs on the transport's executor and is not thread-safe; only `get_executor()` and the `async_*` initiating functions may be called from any thread |
+| 2026-10-06 | `start()`/`stop()` govern only what the host transmits; reception and timeouts run from a node's registration |
+| 2026-10-06 | Events keep emission order: an emission from inside a handler waits for the current one to reach every handler |
+| 2026-10-06 | A node's heartbeat reports liveness and NMT state apart; every boot-up is an event |
+| 2026-10-06 | TPDOs are monitored from setup and time out once per loss; a frame shorter than the mapped length is dropped |
+| 2026-10-06 | RPDOs are not gated on the node's liveness; interlocks belong to the application, built on events |
+| 2026-10-06 | A node id change resets what the old node reported: the heartbeat status, the TPDO timeouts |
+| 2026-10-06 | SYNC off by default and without a counter; a zero period disables a producer |
+| 2026-10-06 | COB-ID subscriptions take standard data frames only (`cob_filter()`) |
 
 ## Open questions
 

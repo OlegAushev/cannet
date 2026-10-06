@@ -4,6 +4,8 @@ add_executable(canopen-tests
     test_od.cpp
     test_od_format.cpp
     test_event.cpp
+    test_client.cpp
+    test_remote_node.cpp
     test_loopback.cpp
     test_raw_transport.cpp
 )
