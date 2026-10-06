@@ -70,12 +70,15 @@ canopen/
     detail/  hb_consumer emcy_consumer
              tpdo_consumer rpdo_producer     # stage 2, done
              sdo_client                      # stage 3, done
+             client_op                       # stage 4, done
     service/ object_reading watch config     # stage 4, done
   src/ test/
+  history/                                   # stage 4, done
   tool/main.cpp                              # stage 5: CLI `canopen`
 ```
 
-`cannet::canopen-history` (stage 4) is a separate, optional target.
+`cannet::canopen-history` (stage 4, `history/`) is a separate, optional
+target.
 
 ## Stages
 
@@ -463,40 +466,49 @@ precision the GUI's to choose, and a web daemon sends numbers;
   write made before a restore reaches the device first. The services'
   operations and the SDO client's are one composed operation,
   `detail::client_op`.
-- `cannet::canopen-history` keeps signal history for plots inside cannet, so
-  that each application does not rewrite it. It is a separate, optional
-  target: only a GUI needs it, and a headless application or the CLI does not
-  link it. It is built on `boost::circular_buffer`; the point type is cannet's
-  own trivially copyable `sample{double t; double value;}` rather than
-  `boost::geometry`'s (ImPlot reads it through a getter, into `double`
-  anyway). `t` is in seconds, and a process may run for weeks: a `float` `t`
-  would advance in 2 ms steps after 4.5 hours and in 62 ms steps after a week.
-  A `double` `t` makes the struct 16 bytes whatever `value` is, so `value` is
-  a `double` too and holds every `od_value` exactly, where a `float` rounds
-  integers above 2^24. Changes against ucanopen's log service: the capacity
-  belongs to the instance, not to a static; shrinking truncates instead of
-  clearing; drawing code takes an RAII `reader` instead of a public mutex.
-  Signals are keyed by dictionary entry index. Values come from a node's watch
-  service (`attach`, a subscription to its events) and from TPDOs the
-  application decodes (`push`).
+- `cannet::canopen-history` (done) keeps signal history for plots inside
+  cannet, so that each application does not rewrite it. It is a separate,
+  optional target, in `canopen/history/`: only a GUI needs it, and a headless
+  application or the CLI does not link it. A signal is a node's object, keyed
+  by the node's name and the object's key rather than by a dictionary entry
+  index, as first planned: the application addresses the values it decodes
+  from TPDOs by the keys it knows, and one history serves several nodes on
+  one time base. Values come from a node's watch (`attach`, a subscription to
+  its events; a failed read is recorded as NaN, which a plot draws as a gap)
+  and from TPDOs the application decodes (`push`, from any thread). Each
+  signal is a `boost::circular_buffer_space_optimized`, whose memory grows
+  with the samples: a plain ring takes its whole capacity at once, 96 MB for
+  60 signals of 100 000 samples. The point type is cannet's own trivially
+  copyable `sample{double t; double value;}` rather than `boost::geometry`'s
+  (ImPlot reads it through a getter, into `double` anyway). `t` is in seconds
+  since the history's origin, and a process may run for weeks: a `float` `t`
+  would advance in 2 ms steps after 4.5 hours and in 62 ms steps after a
+  week. A `double` `t` makes the struct 16 bytes whatever `value` is, so
+  `value` is a `double` too and holds every `od_value` exactly, where a
+  `float` rounds integers above 2^24. Changes against ucanopen's log service:
+  the capacity belongs to the instance, not to a static; shrinking keeps the
+  newest samples instead of clearing; drawing code takes an RAII `reader`,
+  which holds the lock, instead of a public mutex, and gets a signal's
+  samples as the ring holds them, in two contiguous runs.
 
   ```cpp
   struct history_options {
-    std::size_t capacity{100'000}; // points per signal
+    std::size_t capacity{100'000}; // samples per signal
   };
 
   class history {
   public:
-    explicit history(history_options opt = {});
-    void attach(remote_node&);
-    void detach(remote_node&);
-    void push(signal_id, double value);
-    void push(signal_id, double value, std::chrono::steady_clock::time_point);
-    void set_capacity(std::size_t); // truncates when shrinking
+    explicit history(history_options options = {});
+    clock::time_point origin() const;     // where t is zero
+    void attach(remote_node&);            // on the client's executor
+    void detach(remote_node const&);
+    void push(std::string_view node, od_key, double value,
+              clock::time_point = clock::now()); // any thread
+    void set_capacity(std::size_t);       // shrinking keeps the newest
     void clear();
 
-    class reader; // holds the lock while alive
-    reader read() const;
+    class reader;                         // holds the lock while alive
+    reader read() const;                  // find(node, key): sample_view
   };
   ```
 - CSV logging stays in the application.
@@ -595,6 +607,7 @@ on what a desktop GUI never had to:
 | 2026-10-06 | A GUI thread reads state through `snapshot<T>`, a triple buffer, so that neither side waits for the other; `watch_snapshot` keeps each watched object's last value, last error and time |
 | 2026-10-06 | The config service types reads and writes by the dictionary and does not send a value of another type; storing and restoring all are CiA 301's 1010h:01 and 1011h:01 with "save" and "load"; reading all gives up after three timeouts in a row |
 | 2026-10-06 | A service's operations keep their callers' order among the SDO client's: on the client's executor, a service queues its requests without a hop |
+| 2026-10-06 | A history signal is a node's object, keyed by the node's name and the object's key; each is a `circular_buffer_space_optimized`; a failed watch read is recorded as NaN |
 
 ## Open questions
 

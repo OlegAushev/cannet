@@ -10,12 +10,14 @@ add_executable(canopen-tests
     test_watch.cpp
     test_snapshot.cpp
     test_config.cpp
+    test_history.cpp
     test_loopback.cpp
     test_raw_transport.cpp
 )
 
 target_link_libraries(canopen-tests PRIVATE
     cannet::canopen
+    cannet::canopen-history
     Catch2::Catch2WithMain
     cannet_test_support
     cannet_build_config

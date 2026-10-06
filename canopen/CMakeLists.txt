@@ -4,7 +4,8 @@
 # conversion: pure functions and constexpr data); the transport the
 # services talk to — an interface with a CAN_RAW implementation over
 # cannet::cansocket and an in-memory one for tests; and on top of it the
-# client, its remote nodes and their services.
+# client, its remote nodes and their services. Signal history for plots is
+# a target of its own, cannet::canopen-history, in history/.
 
 add_library(canopen
     src/types.cpp
@@ -41,6 +42,8 @@ target_link_libraries(canopen
     PUBLIC cannet::cansocket cannet_asio
     PRIVATE cannet_build_config
 )
+
+add_subdirectory(history)
 
 if(CANNET_BUILD_TESTS)
     add_subdirectory(test)

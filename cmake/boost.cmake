@@ -1,5 +1,7 @@
-# Boost for cannet's asynchronous I/O: Boost.Asio, header-only. Provides the
-# INTERFACE target cannet_asio for cannet's own targets to link.
+# Boost for cannet's asynchronous I/O, Boost.Asio, and for the ring buffers of
+# signal history, Boost.CircularBuffer; both header-only. Provides the
+# INTERFACE targets cannet_asio and cannet_circular_buffer for cannet's own
+# targets to link.
 #
 # The top-level project decides where Boost comes from: an application and
 # cannet must share one Asio, because two copies cannot share an io_context.
@@ -20,7 +22,7 @@ if(CANNET_STANDALONE)
     if(NOT Boost_FOUND)
         message(STATUS "Boost ${CANNET_BOOST_VERSION} not found — fetching it")
         include(FetchContent)
-        set(BOOST_INCLUDE_LIBRARIES asio)
+        set(BOOST_INCLUDE_LIBRARIES asio circular_buffer)
         set(BOOST_SKIP_INSTALL_RULES ON)
         # Asio's dependencies include compiled libraries (Boost.Context for
         # stackful coroutines) that cannet never links; keep them out of the
@@ -56,3 +58,11 @@ else()
 endif()
 
 target_link_libraries(cannet_asio INTERFACE Threads::Threads)
+
+add_library(cannet_circular_buffer INTERFACE)
+
+if(TARGET Boost::circular_buffer)
+    target_link_libraries(cannet_circular_buffer INTERFACE Boost::circular_buffer)
+else()
+    target_link_libraries(cannet_circular_buffer INTERFACE Boost::headers)
+endif()

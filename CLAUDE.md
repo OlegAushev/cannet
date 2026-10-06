@@ -72,8 +72,9 @@ what privileges they need. A plane never reaches upward.
   `watch.hpp` (polling the watch objects) and `config.hpp` (the parameters:
   read all, typed reads and writes, store and restore), reporting
   `object_reading`s; and for a GUI on a thread of its own, `snapshot.hpp` (a
-  lock-free triple buffer) and `watch_snapshot.hpp`. Signal history comes
-  next, as the optional target `cannet::canopen-history`.
+  lock-free triple buffer), `watch_snapshot.hpp`, and signal history for
+  plots, `history.hpp`, in a target of its own that only a GUI links,
+  `cannet::canopen-history` (`canopen/history/`).
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire
