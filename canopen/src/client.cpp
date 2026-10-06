@@ -77,7 +77,11 @@ client::client(transport& bus, client_options options)
 
 client::~client()
 {
-  stop(); // nodes that outlive the client fall silent
+  stop();
+  // Nodes that outlive the client fall silent: the transport may go next.
+  for (auto const& node : state_->nodes) {
+    node->detach();
+  }
 }
 
 client::executor_type client::get_executor() const noexcept

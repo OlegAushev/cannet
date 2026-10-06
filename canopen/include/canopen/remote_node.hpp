@@ -9,11 +9,13 @@
 // Protocol plane, unprivileged.
 //
 // Thread model: the client's. Every call, the services' included, on the
-// client's executor; handlers and events run there too.
+// client's executor, where handlers and events run too; only the SDO
+// operations may be called from any thread.
 
 #include <canopen/detail/emcy_consumer.hpp>
 #include <canopen/detail/hb_consumer.hpp>
 #include <canopen/detail/rpdo_producer.hpp>
+#include <canopen/detail/sdo_client.hpp>
 #include <canopen/detail/tpdo_consumer.hpp>
 #include <canopen/od.hpp>
 #include <canopen/transport.hpp>
@@ -36,6 +38,8 @@ struct remote_node_options {
   dictionary_view dictionary{};
   // With no heartbeat for this long the node counts as lost; zero: never.
   std::chrono::milliseconds heartbeat_timeout{2000};
+  // How long an SDO request waits for its answer.
+  std::chrono::milliseconds sdo_timeout{500};
 };
 
 class remote_node : public std::enable_shared_from_this<remote_node> {
@@ -48,6 +52,7 @@ public:
   node_id id() const;
   dictionary_view dictionary() const;
 
+  detail::sdo_client sdo;
   detail::hb_consumer heartbeat;
   detail::emcy_consumer emcy;
   detail::tpdo_consumer tpdo;
@@ -63,6 +68,8 @@ private:
   // What the node transmits runs only while the client does.
   void start();
   void stop();
+  // The client is going: nothing more goes out, SDO requests included.
+  void detach();
 
   std::string name_;
   node_id id_;

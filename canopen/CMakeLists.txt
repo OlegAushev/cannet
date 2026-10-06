@@ -21,6 +21,7 @@ add_library(canopen
     src/emcy_consumer.cpp
     src/tpdo_consumer.cpp
     src/rpdo_producer.cpp
+    src/sdo_client.cpp
     src/remote_node.cpp
     src/client.cpp
 )

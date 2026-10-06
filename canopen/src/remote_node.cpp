@@ -5,7 +5,8 @@
 namespace cannet::canopen {
 
 remote_node::remote_node(transport& bus, remote_node_options options)
-    : heartbeat(bus, options.id, options.heartbeat_timeout),
+    : sdo(bus, options.id, options.sdo_timeout),
+      heartbeat(bus, options.id, options.heartbeat_timeout),
       emcy(bus, options.id),
       tpdo(bus, options.id),
       rpdo(bus, options.id),
@@ -37,6 +38,7 @@ void remote_node::set_id(node_id id)
   // A handler notified below may drop the last other reference to the node.
   auto const keep = shared_from_this();
   id_ = id;
+  sdo.rebind(id);
   heartbeat.rebind(id);
   emcy.rebind(id);
   tpdo.rebind(id);
@@ -54,6 +56,12 @@ void remote_node::start()
 void remote_node::stop()
 {
   rpdo.stop();
+}
+
+void remote_node::detach()
+{
+  rpdo.stop();
+  sdo.close();
 }
 
 } // namespace cannet::canopen

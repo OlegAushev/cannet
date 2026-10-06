@@ -16,8 +16,9 @@
 // its own sends commands through async_*, changes settings through a post()
 // to the executor, and follows state through events.
 //
-// The transport must outlive the client. Remote nodes may outlive it, and
-// stop transmitting when it goes.
+// The transport must outlive the client. Remote nodes may outlive it: when
+// it goes they stop transmitting, and their SDO requests fail with
+// transport_error::closed.
 
 #include <canopen/remote_node.hpp>
 #include <canopen/setup_error.hpp>

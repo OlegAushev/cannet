@@ -1,7 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stages 1 (`cd2712d`), 0 and 2 done; stage 3 (the SDO
-client) next.
+Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 (the
+watch and config services) next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -67,7 +67,7 @@ canopen/
     client.hpp remote_node.hpp setup_error.hpp
     detail/  hb_consumer emcy_consumer
              tpdo_consumer rpdo_producer     # stage 2, done
-             sdo_client                      # stage 3
+             sdo_client                      # stage 3, done
     service/ watch config                    # stage 4
   src/ test/
   tool/main.cpp                              # stage 5: CLI `canopen`
@@ -82,7 +82,7 @@ canopen/
 | 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | done |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
-| 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | |
+| 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done; a live device still to come |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
@@ -227,11 +227,12 @@ public:
 
 class remote_node {
 public:
+  detail::sdo_client sdo;        // stage 3: one request in flight, a queue
   detail::hb_consumer heartbeat; // {alive, state}; events on every change
   detail::emcy_consumer emcy;    // events: every EMCY
   detail::tpdo_consumer tpdo;    // per TPDO: handler, timeout, on_timeout
   detail::rpdo_producer rpdo;    // per RPDO: provider, period; enable/disable
-  // stage 3: detail::sdo_client sdo; stage 4: service::watch, service::config
+  // stage 4: service::watch, service::config
 };
 ```
 
@@ -297,15 +298,15 @@ emblib does in the firmware (it starts operational, keeps its heartbeat in
 every state, sends TPDOs and takes RPDOs only while operational), and on
 vcan, where `candump` shows SYNC, the heartbeat, NMT and RPDOs.
 
-## SDO client (stage 3)
+## SDO client (stage 3, done)
 
 ```cpp
-// Initiating functions, as on cannet::raw::async_socket: any completion
-// token, asio::deferred by default. Each completes with
-// std::expected<T, sdo_error>, T on the right.
+// remote_node::sdo. Initiating functions, as on cannet::raw::async_socket:
+// any completion token, asio::deferred by default, callable from any
+// thread. Each completes with std::expected<T, sdo_error>, T on the right.
 auto async_read(od_key, od_value_type, Token&&);  // od_value
 auto async_write(od_key, od_value, Token&&);      // void
-auto async_exec(od_key, Token&&);                 // od_value
+auto async_exec(od_key, Token&&);                 // void
 auto async_read_string(od_key, Token&&);          // std::string
 auto async_restore_default(od_key, Token&&);      // void
 ```
@@ -315,19 +316,34 @@ auto async_restore_default(od_key, Token&&);      // void
   serves one SDO client. A second one — the CLI beside a running application —
   would take the first one's responses, told apart by index and subindex
   alone, and break its strings (below). `canopen dump` only listens.
-- Each operation `co_spawn`s its coroutine onto the client's executor, so it
-  runs there whatever the caller's executor, and the token decides how the
-  result comes back: awaited in a coroutine — the CLI, the tests, a Beast
-  session on a strand of its own — or `use_future` on a GUI thread. The
-  coroutines stay inside; an `asio::awaitable` in the signature would run on
-  the caller's executor and touch the queue off the client's.
-- The response timeout is the client's own (`cancel_after` on the wait for the
-  response) and completes with `timeout`. A caller cancels through the
-  operation's cancellation slot — a `cancellation_signal`, its own
-  `cancel_after` — and gets `cancelled` at once, but the request keeps the
-  channel until its response or its timeout: a late response must not pass
-  for the next request's. A cancelled write may already have been applied;
-  `cancelled` does not mean "not written".
+- A worker coroutine per node serves the queue on the client's executor.
+  Each operation is a composed operation: it starts on the client's executor
+  whatever the caller's, and the worker or a cancellation completes it
+  through the handler's own executor, so the token decides how the result
+  comes back — awaited in a coroutine (the CLI, the tests, a Beast session on
+  a strand of its own) or `use_future` on a GUI thread. The coroutines stay
+  inside; an `asio::awaitable` in the signature would run on the caller's
+  executor and touch the queue off the client's.
+- The response timeout is the node's (`remote_node_options::sdo_timeout`,
+  500 ms by default) and completes with `timeout`. A caller cancels through
+  the operation's cancellation slot — a `cancellation_signal` emitted on the
+  client's executor, or `cancel_after` — and gets `cancelled` at once; a
+  queued request is then never sent, but one in flight keeps the channel
+  until its response or its timeout: a late response must not pass for the
+  next request's. A cancelled write may already have been applied;
+  `cancelled` does not mean "not written". Answers are matched by index and
+  subindex, and one for another key, a late answer to an earlier request, is
+  ignored.
+- A request in flight when the node changes its id completes with
+  `cancelled`; queued ones go to the new id. Once the client is gone, every
+  request fails with `transport` and `transport_error::closed`.
+- `async_exec` runs a command, an exec object: a write whose bytes the device
+  ignores, as emblib's `od_exec` and ucanopen both have it. Its answer carries
+  no value, so the operation has none either.
+- `async_write` announces the value's size, but the device takes the bytes
+  as its own object's type: the value's type must be the object's. The
+  client addresses objects by key and checks nothing against a dictionary;
+  that belongs to the services of stage 4 and the CLI.
 - `async_read_string` hides the device's string convention (4-byte expedited
   chunks up to a NUL) behind one operation, where ucanopen has a
   `StringReader` and a busy-wait in `get()`. It holds the channel until the
@@ -335,7 +351,9 @@ auto async_restore_default(od_key, Token&&);      // void
   SDO server (`text_cursor` in emblib's `sdo_server.hpp`). Reading another
   string object restarts the cursor, and an interrupted read leaves it
   mid-string, so the next read of that string would silently return only its
-  tail.
+  tail. A read the client could not finish (a timeout, a failure past the
+  first word) therefore marks the string, and its next read first runs the
+  cursor to the NUL.
 - `async_restore_default` is the client half of emblib's
   `sdo_server::write_restore_default`: an expedited write to `0x1011:04`
   whose data carries the target key (index little-endian, then subindex).
@@ -344,12 +362,27 @@ One error type instead of ucanopen's three statuses:
 
 ```cpp
 struct sdo_error {
-  enum class kind { not_found, access_denied, type_mismatch, malformed,
-                    aborted, timeout, cancelled, transport };
+  enum class kind { aborted, timeout, cancelled, type_mismatch, malformed,
+                    transport };
   kind reason;
-  sdo_abort_code abort{}; // meaningful when reason == aborted
+  sdo_abort_code abort{};       // with aborted
+  transport_error send_error{}; // with transport
 };
 ```
+
+`type_mismatch` means the device answered a read with another size than the
+type read has: the dictionaries in the firmware and in the device
+application have drifted apart, which `od-verify` (stage 5) is to report.
+The earlier sketch's `not_found` and `access_denied` come from the device as
+aborts (`object_not_found`, `read_from_write_only`, `write_to_read_only`)
+and are reported as `aborted` with the code; `malformed` covers what the
+client cannot use, a segmented answer among them.
+
+Verified against an emulated device that serves SDO as emblib's
+`sdo_server` does, on the loopback bus (queue, timeouts, late answers,
+cancellation queued, in flight and mid-string, a string cut short, a node id
+change, the client gone) and on vcan through the kernel. A live device is
+still to come: no bus with one was at hand.
 
 ## Services (stage 4)
 
@@ -484,6 +517,12 @@ on what a desktop GUI never had to:
 | 2026-10-06 | A node id change resets what the old node reported: the heartbeat status, the TPDO timeouts |
 | 2026-10-06 | SYNC off by default and without a counter; a zero period disables a producer |
 | 2026-10-06 | COB-ID subscriptions take standard data frames only (`cob_filter()`) |
+| 2026-10-06 | A worker coroutine per node serves the SDO queue; each operation is a composed operation that the worker or a cancellation completes |
+| 2026-10-06 | `async_exec` completes without a value: emblib's commands are writes whose bytes the device ignores |
+| 2026-10-06 | `sdo_error` kinds: aborted (with the code), timeout, cancelled, type_mismatch (an answer's size against the type read), malformed, transport (with the `transport_error`) |
+| 2026-10-06 | A string read cut short marks the string, and its next read first runs the device's cursor to the NUL |
+| 2026-10-06 | An SDO request in flight during a node id change is cancelled, queued ones go to the new id; with the client gone, requests fail with `transport_error::closed` |
+| 2026-10-06 | The SDO timeout is the node's, 500 ms by default |
 
 ## Open questions
 

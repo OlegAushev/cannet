@@ -395,7 +395,8 @@ TEST_CASE("the client drives an emulated device", "[remote_node]")
   boost::asio::io_context io;
   loopback_bus bus{io.get_executor()};
   loopback_transport host_bus{bus};
-  emulated_device device{bus, device_id, 20ms};
+  loopback_transport device_bus{bus};
+  emulated_device device{device_bus, device_id, 20ms};
   std::uint8_t device_counter = 0;
   device.produce_tpdo(1, 10ms, [&] {
     payload p{};

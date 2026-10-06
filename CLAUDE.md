@@ -66,9 +66,9 @@ what privileges they need. A plane never reaches upward.
   `cannet::raw::async_socket`) and `loopback.hpp` (an in-memory bus for
   tests); and over the transport the client: `client.hpp` (the host's own
   node: NMT master, SYNC and heartbeat producer, the registry of remote
-  nodes), `remote_node.hpp` (one device: heartbeat, EMCY, TPDO and RPDO
-  services) and `event.hpp` (how services report what happens). The SDO
-  client and the higher-level services come next.
+  nodes), `remote_node.hpp` (one device: SDO client, heartbeat, EMCY, TPDO
+  and RPDO services) and `event.hpp` (how services report what happens).
+  The higher-level services (watch, config) come next.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire
