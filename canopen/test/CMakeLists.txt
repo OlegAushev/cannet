@@ -6,6 +6,7 @@ add_executable(canopen-tests
     test_od_file.cpp
     test_od_tools.cpp
     test_od_header.cpp
+    test_sdo_commands.cpp
     test_event.cpp
     test_client.cpp
     test_remote_node.cpp
@@ -21,7 +22,7 @@ add_executable(canopen-tests
 target_link_libraries(canopen-tests PRIVATE
     cannet::canopen
     cannet::canopen-history
-    canopen_od_tools
+    canopen_tool
     Catch2::Catch2WithMain
     cannet_test_support
     cannet_build_config

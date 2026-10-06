@@ -53,21 +53,26 @@ option(CANOPEN_BUILD_TOOL "Build the canopen CLI diagnostic tool"
        ${CANNET_STANDALONE}
 )
 
-add_library(canopen_od_tools STATIC tool/od_tools.cpp)
-target_include_directories(canopen_od_tools PUBLIC
+# The CLI's commands, apart from its main() so that its tests call them.
+add_library(canopen_tool STATIC
+    tool/od_tools.cpp
+    tool/command_support.cpp
+    tool/sdo_commands.cpp
+)
+target_include_directories(canopen_tool PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/tool
 )
-target_link_libraries(canopen_od_tools
+target_link_libraries(canopen_tool
     PUBLIC cannet::canopen
     PRIVATE cannet_build_config
 )
 
 add_executable(canopen-cli tool/main.cpp)
 set_target_properties(canopen-cli PROPERTIES OUTPUT_NAME canopen)
-target_link_libraries(canopen-cli PRIVATE canopen_od_tools cannet_build_config)
+target_link_libraries(canopen-cli PRIVATE canopen_tool cannet_build_config)
 
 if(NOT CANOPEN_BUILD_TOOL)
-    set_target_properties(canopen_od_tools canopen-cli PROPERTIES
+    set_target_properties(canopen_tool canopen-cli PROPERTIES
         EXCLUDE_FROM_ALL ON
     )
 endif()
