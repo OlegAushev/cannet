@@ -20,65 +20,30 @@
 // handler's. Emit a cancellation signal on the client's executor
 // (cancel_after does). Everything else belongs to the client's executor.
 
+#include <canopen/detail/client_op.hpp>
 #include <canopen/od.hpp>
 #include <canopen/sdo.hpp>
+#include <canopen/sdo_error.hpp>
 #include <canopen/transport.hpp>
 #include <canopen/types.hpp>
 
-#include <boost/asio/append.hpp>
-#include <boost/asio/associated_executor.hpp>
 #include <boost/asio/async_result.hpp>
-#include <boost/asio/bind_executor.hpp>
 #include <boost/asio/cancellation_signal.hpp>
 #include <boost/asio/compose.hpp>
 #include <boost/asio/default_completion_token.hpp>
 #include <boost/asio/deferred.hpp>
-#include <boost/asio/dispatch.hpp>
-#include <boost/asio/post.hpp>
 
 #include <chrono>
 #include <cstdint>
-#include <expected>
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
-#include <type_traits>
 #include <utility>
 #include <variant>
 
 namespace cannet::canopen {
 
 class remote_node;
-
-// Why an SDO operation failed.
-struct sdo_error {
-  enum class kind : std::uint8_t {
-    aborted,       // the device refused; `abort` says why
-    timeout,       // no answer within the node's SDO timeout
-    cancelled,     // by the caller, or by a change of the node's id
-    type_mismatch, // the device's object has another size than the type read
-    malformed,     // an answer the client cannot use, such as a segmented one
-    transport,     // the request was not sent; `send_error` says why
-  };
-
-  kind reason;
-  sdo_abort_code abort{};       // with aborted
-  transport_error send_error{}; // with transport
-
-  friend bool operator==(sdo_error const&, sdo_error const&) = default;
-};
-
-// A human-readable description, for people; the wording may change.
-std::string to_string(sdo_error const& e);
-std::string_view to_string(sdo_error::kind k);
-
-// The stable identifier of a kind: its enumerator's name, such as
-// "type_mismatch", for logs and formats a program reads.
-std::string_view name(sdo_error::kind k);
-
-template<typename T>
-using sdo_result = std::expected<T, sdo_error>;
 
 namespace detail {
 
@@ -107,68 +72,6 @@ void sdo_submit(std::weak_ptr<sdo_state> const& state,
                 sdo_request const& request,
                 boost::asio::cancellation_slot slot,
                 sdo_completion complete);
-
-template<typename T>
-sdo_result<T> narrow(sdo_outcome outcome)
-{
-  if (!outcome) {
-    return std::unexpected(outcome.error());
-  }
-  if constexpr (std::is_void_v<T>) {
-    return {};
-  }
-  else {
-    return std::get<T>(std::move(*outcome));
-  }
-}
-
-// One SDO operation: it hops onto the client's executor, hands its request
-// to the worker, and reaches its handler through the handler's executor.
-template<typename T>
-struct sdo_op {
-  std::weak_ptr<sdo_state> state;
-  boost::asio::any_io_executor executor;
-  sdo_request request;
-  bool on_executor = false;
-
-  template<typename Self>
-  void operator()(Self& self)
-  {
-    // Moving `self` moves this object along: take what the steps need first.
-    auto const ex = executor;
-    if (!on_executor) {
-      // Posted, never dispatched: an operation must not complete inside
-      // its initiating function.
-      on_executor = true;
-      boost::asio::post(ex, boost::asio::bind_executor(ex, std::move(self)));
-      return;
-    }
-    auto const weak = state;
-    auto const req = request;
-    auto const slot = self.get_cancellation_state().slot();
-    bool const cancelled = self.get_cancellation_state().cancelled()
-                        != boost::asio::cancellation_type::none;
-    auto complete = [self = std::move(self)](sdo_outcome outcome) mutable {
-      auto const handler_ex = boost::asio::get_associated_executor(self);
-      boost::asio::dispatch(
-          handler_ex,
-          boost::asio::append(std::move(self), std::move(outcome)));
-    };
-    if (cancelled) {
-      // Cancelled on its way here, before the worker could hear of it.
-      complete(
-          std::unexpected(sdo_error{.reason = sdo_error::kind::cancelled}));
-      return;
-    }
-    sdo_submit(weak, req, slot, std::move(complete));
-  }
-
-  template<typename Self>
-  void operator()(Self& self, sdo_outcome outcome)
-  {
-    self.complete(narrow<T>(std::move(outcome)));
-  }
-};
 
 class sdo_client {
 public:
@@ -289,8 +192,14 @@ private:
   auto start(sdo_request const& request, Token&& token)
   {
     using signature = void(sdo_result<T>);
+    auto submit = [state = std::weak_ptr{state_},
+                   request](boost::asio::cancellation_slot slot,
+                            sdo_completion complete) {
+      sdo_submit(state, request, slot, std::move(complete));
+    };
     return boost::asio::async_compose<Token, signature>(
-        sdo_op<T>{.state = state_, .executor = executor_, .request = request},
+        client_op<T, sdo_outcome, decltype(submit)>{.submit = std::move(submit),
+                                                    .executor = executor_},
         token,
         executor_);
   }
