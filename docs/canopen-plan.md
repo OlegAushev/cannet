@@ -82,7 +82,7 @@ canopen/
 | 0 | Boost.Asio; `cannet::raw::async_socket`; `cansock dump` on async; `transport.hpp` with `raw_transport` and `loopback_transport` | `cansock dump` on vcan without manual polling; protocol tests run on the loopback bus | done |
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
-| 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done; a live device still to come |
+| 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
@@ -381,8 +381,12 @@ client cannot use, a segmented answer among them.
 Verified against an emulated device that serves SDO as emblib's
 `sdo_server` does, on the loopback bus (queue, timeouts, late answers,
 cancellation queued, in flight and mid-string, a string cut short, a node id
-change, the client gone) and on vcan through the kernel. A live device is
-still to come: no bus with one was at hand.
+change, the client gone) and on vcan through the kernel; and on 2026-10-06
+against a live ADPT-ETK Inverter (firmware `15a8617`, node 1) on a gs_usb
+adapter at 500 kbit/s: strings, scalar reads, a write of a parameter's own
+value, a command (`clear_errors`), `type_mismatch` and the abort codes, about
+1–2 ms per exchange. Timeouts and cancellation were left to the emulated
+device.
 
 ## Services (stage 4)
 
