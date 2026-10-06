@@ -34,7 +34,8 @@ TEST_CASE("every setup_error has a description and a name", "[client]")
   for (auto const e : {setup_error::node_id_taken,
                        setup_error::name_taken,
                        setup_error::no_such_node,
-                       setup_error::invalid_pdo}) {
+                       setup_error::invalid_pdo,
+                       setup_error::no_such_object}) {
     CHECK(to_string(e) != "unknown error");
     CHECK(name(e) != "unknown");
   }

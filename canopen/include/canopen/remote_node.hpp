@@ -5,6 +5,8 @@
 // way emblib's server aggregates the device's own. The client
 // (client.hpp) creates it with add_node() and keeps node ids unique; in
 // CiA 301 terms the device is an SDO server and this is its client side.
+// Besides the protocol's own services (detail/), it holds the ones built on
+// its dictionary over SDO (service/).
 //
 // Protocol plane, unprivileged.
 //
@@ -18,6 +20,7 @@
 #include <canopen/detail/sdo_client.hpp>
 #include <canopen/detail/tpdo_consumer.hpp>
 #include <canopen/od.hpp>
+#include <canopen/service/watch.hpp>
 #include <canopen/transport.hpp>
 #include <canopen/types.hpp>
 
@@ -57,6 +60,7 @@ public:
   detail::emcy_consumer emcy;
   detail::tpdo_consumer tpdo;
   detail::rpdo_producer rpdo;
+  service::watch watch;
 
 private:
   friend class client;

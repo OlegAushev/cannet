@@ -7,6 +7,7 @@ add_executable(canopen-tests
     test_client.cpp
     test_remote_node.cpp
     test_sdo_client.cpp
+    test_watch.cpp
     test_loopback.cpp
     test_raw_transport.cpp
 )

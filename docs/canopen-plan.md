@@ -1,7 +1,8 @@
 # CANopen stack plan
 
-Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 (the
-watch and config services) next.
+Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 under
+way: the watch service done; the config service, the GUI snapshot and
+signal history next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -68,7 +69,8 @@ canopen/
     detail/  hb_consumer emcy_consumer
              tpdo_consumer rpdo_producer     # stage 2, done
              sdo_client                      # stage 3, done
-    service/ watch config                    # stage 4
+    service/ object_reading watch            # stage 4, done
+             config                          # stage 4
   src/ test/
   tool/main.cpp                              # stage 5: CLI `canopen`
 ```
@@ -83,7 +85,7 @@ canopen/
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
-| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | |
+| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
@@ -232,7 +234,8 @@ public:
   detail::emcy_consumer emcy;    // events: every EMCY
   detail::tpdo_consumer tpdo;    // per TPDO: handler, timeout, on_timeout
   detail::rpdo_producer rpdo;    // per RPDO: provider, period; enable/disable
-  // stage 4: service::watch, service::config
+  service::watch watch;          // stage 4: polls the watch objects over SDO
+  // next: service::config
 };
 ```
 
@@ -388,16 +391,45 @@ value, a command (`clear_errors`), `type_mismatch` and the abort codes, about
 1–2 ms per exchange. Timeouts and cancellation were left to the emulated
 device.
 
-## Services (stage 4)
+## Services (stage 4, in progress)
 
-- `service::watch` polls the dictionary's watch category over SDO. ucanopen
-  fires these requests round-robin, with no timeout and no back-pressure.
-  Here a coroutine walks the enabled objects and sends the next request after
-  a response or a timeout; the period is the interval between full passes.
-  Each value goes out as an event (`od_value` plus formatted text). A snapshot
-  behind a double buffer, which a GUI on its own thread reads with no lock per
-  frame, is an adapter subscribed like any other consumer, beside history
-  (`attach`) and the sessions of a web daemon.
+The services built on a node's dictionary are members of `remote_node`
+beside the protocol's own, and report what they read as events:
+
+```cpp
+struct object_reading {
+  od_entry const* entry;                      // the object read
+  sdo_result<od_value> value;                 // its value, or why there is none
+  std::chrono::steady_clock::time_point time; // when the read completed
+};
+```
+
+An event carries no formatted text: formatting is presentation, its
+precision the GUI's to choose, and a web daemon sends numbers;
+`to_string(value, precision)` is one call.
+
+- `service::watch` (done) polls the readable scalar objects of the
+  dictionary's watch category over SDO, ordered by key. ucanopen fires these
+  requests round-robin, with no timeout and no back-pressure. Here a
+  coroutine walks the enabled objects and sends the next request after an
+  answer or a timeout, so the node's SDO queue never holds more than one of
+  its requests. The period is the interval between the starts of two passes;
+  a pass that runs longer is followed by the next at once, and missed passes
+  are not made up. As an RPDO, the watch sends nothing until it has a
+  period, and it does not wait for `client::start()`: SDO works on a stopped
+  client too. Objects are enabled one by one, and the watch as a whole can be
+  disabled, which stops it at once and drops the read in flight, unreported;
+  so is a read cut short by a node id change.
+
+  When the device stops answering, every read times out, is reported as a
+  timeout, and the pass goes on: the bus sees one request per SDO timeout,
+  and another request for the node waits behind at most one of the watch's.
+  The first answer after the device returns is reported as usual. A request
+  the transport cannot send ends the pass until the next period: the other
+  objects would fail as well, and the watch does not spin.
+- A snapshot behind a double buffer, which a GUI on its own thread reads with
+  no lock per frame, is an adapter subscribed like any other consumer, beside
+  history (`attach`) and the sessions of a web daemon.
 - `service::config` covers the config category: read all parameters, write
   one, save all, restore one to its default.
 - `cannet::canopen-history` keeps signal history for plots inside cannet, so
@@ -527,6 +559,8 @@ on what a desktop GUI never had to:
 | 2026-10-06 | A string read cut short marks the string, and its next read first runs the device's cursor to the NUL |
 | 2026-10-06 | An SDO request in flight during a node id change is cancelled, queued ones go to the new id; with the client gone, requests fail with `transport_error::closed` |
 | 2026-10-06 | The SDO timeout is the node's, 500 ms by default |
+| 2026-10-06 | The services built on a dictionary are members of `remote_node` and report reads as `object_reading` events: the value or the error, and the time; no formatted text |
+| 2026-10-06 | The watch keeps one request in flight; its period separates the starts of passes, zero (the default) stops it; a timeout is reported and the pass goes on, a transport failure ends the pass; `disable()` drops the read in flight |
 
 ## Open questions
 

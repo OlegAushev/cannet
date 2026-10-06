@@ -67,8 +67,10 @@ what privileges they need. A plane never reaches upward.
   tests); and over the transport the client: `client.hpp` (the host's own
   node: NMT master, SYNC and heartbeat producer, the registry of remote
   nodes), `remote_node.hpp` (one device: SDO client, heartbeat, EMCY, TPDO
-  and RPDO services) and `event.hpp` (how services report what happens).
-  The higher-level services (watch, config) come next.
+  and RPDO services) and `event.hpp` (how services report what happens);
+  and over SDO the services built on a node's dictionary, under `service/`:
+  `watch.hpp` (polling the watch objects), reporting `object_reading`s. The
+  config service, a snapshot for a GUI thread and signal history come next.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire

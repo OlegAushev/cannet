@@ -185,6 +185,12 @@ public:
   sdo_client(sdo_client const&) = delete;
   sdo_client& operator=(sdo_client const&) = delete;
 
+  // The client's executor. Any thread.
+  executor_type get_executor() const noexcept
+  {
+    return executor_;
+  }
+
   // Reads the object at `key` as `type`. type_mismatch when the device
   // answers with another size than `type` has.
   template<boost::asio::completion_token_for<read_signature> Token =

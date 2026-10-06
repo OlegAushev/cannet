@@ -1,7 +1,8 @@
 #pragma once
 
 // cannet::canopen::setup_error — why the client refused a configuration
-// change: adding a node, changing a node id, setting up a PDO.
+// change: adding a node, changing a node id, setting up a PDO, picking the
+// objects a service polls.
 //
 // Protocol plane, unprivileged, no I/O, no state.
 
@@ -10,10 +11,11 @@
 namespace cannet::canopen {
 
 enum class setup_error {
-  node_id_taken, // another node of the client, or the client itself, has it
-  name_taken,    // another node of the client has it
-  no_such_node,  // the client has no node by that name
-  invalid_pdo,   // a PDO number outside 1..4, the predefined connection set
+  node_id_taken,  // another node of the client, or the client itself, has it
+  name_taken,     // another node of the client has it
+  no_such_node,   // the client has no node by that name
+  invalid_pdo,    // a PDO number outside 1..4, the predefined connection set
+  no_such_object, // the service has no object by that key
 };
 
 // A human-readable description of a `setup_error`, for people; the wording

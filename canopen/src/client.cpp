@@ -15,6 +15,7 @@ std::string_view to_string(setup_error e)
   case setup_error::name_taken: return "node name already taken";
   case setup_error::no_such_node: return "no node by that name";
   case setup_error::invalid_pdo: return "invalid PDO number or length";
+  case setup_error::no_such_object: return "no such object in the service";
   }
   return "unknown error";
 }
@@ -26,6 +27,7 @@ std::string_view name(setup_error e)
   case setup_error::name_taken: return "name_taken";
   case setup_error::no_such_node: return "no_such_node";
   case setup_error::invalid_pdo: return "invalid_pdo";
+  case setup_error::no_such_object: return "no_such_object";
   }
   return "unknown";
 }
