@@ -120,6 +120,18 @@ std::optional<od_value_type> parse_type(std::string_view text)
   return std::nullopt;
 }
 
+std::string_view cli_name(nmt_command command)
+{
+  switch (command) {
+  case nmt_command::start: return "start";
+  case nmt_command::stop: return "stop";
+  case nmt_command::enter_pre_operational: return "pre-operational";
+  case nmt_command::reset_node: return "reset-node";
+  case nmt_command::reset_communication: return "reset-communication";
+  }
+  return "unknown";
+}
+
 client_options host_options(node_options const& options)
 {
   return {.id = options.host, .heartbeat_period = 0ms, .sync_period = 0ms};

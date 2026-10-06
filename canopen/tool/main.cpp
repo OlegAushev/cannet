@@ -2,6 +2,8 @@
 //
 // On a bus (bus_commands.hpp), whose interface must already be up (see
 // canup); no privileges required:
+// dump: prints every frame on the bus, decoded, until interrupted (Ctrl+C);
+//       sends nothing.
 // sdo read|write|exec: one SDO request to a node.
 //
 // Dictionaries, as OD files (canopen/od_file.hpp); these read and write
@@ -53,6 +55,7 @@ int usage()
 {
   std::print(stderr,
              "usage:\n"
+             "  canopen dump <iface> [-d <file.od>] [--node <node>]\n"
              "  canopen sdo read <iface> <node> <object> [-d <file.od>]\n"
              "                   [--type <type>]\n"
              "  canopen sdo write <iface> <node> <object> <value>\n"
@@ -321,6 +324,32 @@ int run_on_bus(std::string_view iface, Command command)
   return status;
 }
 
+int dump(std::span<std::string_view const> args)
+{
+  auto const parsed = parse_arguments(args, {"-d", "--node"});
+  if (!parsed || parsed->positional.size() != 1) {
+    return usage();
+  }
+  tool::dump_options options;
+  std::optional<loaded_dictionary> dictionary;
+  if (auto const path = option(*parsed, "-d")) {
+    dictionary = load(*path);
+    if (!dictionary) {
+      return 2;
+    }
+    options.dictionary = *dictionary;
+  }
+  if (auto const node = option(*parsed, "--node")) {
+    options.node = parse_node_id(*node);
+    if (!options.node) {
+      return 2;
+    }
+  }
+  return run_on_bus(parsed->positional[0], [&](transport& bus) {
+    return tool::dump(bus, options, terminal());
+  });
+}
+
 int sdo(std::string_view what, std::span<std::string_view const> args)
 {
   bool const read = what == "read";
@@ -450,6 +479,9 @@ int od_header(std::span<std::string_view const> args)
 int main(int argc, char** argv)
 {
   std::vector<std::string_view> const args(argv + 1, argv + argc);
+  if (!args.empty() && args[0] == "dump") {
+    return dump(std::span{args}.subspan(1));
+  }
   if (args.size() < 2) {
     return usage();
   }

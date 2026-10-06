@@ -57,6 +57,7 @@ option(CANOPEN_BUILD_TOOL "Build the canopen CLI diagnostic tool"
 add_library(canopen_tool STATIC
     tool/od_tools.cpp
     tool/command_support.cpp
+    tool/dump.cpp
     tool/sdo_commands.cpp
 )
 target_include_directories(canopen_tool PUBLIC

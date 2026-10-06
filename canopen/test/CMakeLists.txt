@@ -6,6 +6,7 @@ add_executable(canopen-tests
     test_od_file.cpp
     test_od_tools.cpp
     test_od_header.cpp
+    test_dump.cpp
     test_sdo_commands.cpp
     test_event.cpp
     test_client.cpp

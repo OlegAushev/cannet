@@ -72,18 +72,26 @@ struct cli_fixture {
   }
 
   // Starts `command`; its exit status lands in what this returns, -1 for
-  // an exception. `stop` cancels it, as Ctrl+C does.
-  std::shared_ptr<std::optional<int>> start(boost::asio::awaitable<int> command)
+  // an exception. `signal` cancels it, as Ctrl+C does: `stop` unless
+  // given. A signal cancels one command at a time.
+  std::shared_ptr<std::optional<int>>
+  start(boost::asio::awaitable<int> command,
+        boost::asio::cancellation_signal& signal)
   {
     auto status = std::make_shared<std::optional<int>>();
     boost::asio::co_spawn(io,
                           std::move(command),
                           boost::asio::bind_cancellation_slot(
-                              stop.slot(),
+                              signal.slot(),
                               [status](std::exception_ptr error, int result) {
                                 *status = error ? -1 : result;
                               }));
     return status;
+  }
+
+  std::shared_ptr<std::optional<int>> start(boost::asio::awaitable<int> command)
+  {
+    return start(std::move(command), stop);
   }
 
   static constexpr std::chrono::milliseconds run_limit{2000};

@@ -63,6 +63,26 @@ std::string label(object_ref const& object);
 // A type by its name(), "uint16", as an OD file gives it.
 std::optional<od_value_type> parse_type(std::string_view text);
 
+struct dump_options {
+  // Only this node's frames, and those for every node (NMT, SYNC, TIME);
+  // nullopt: every frame.
+  std::optional<node_id> node{};
+  // The objects SDO frames name, with their names and their values' types.
+  dictionary_view dictionary{};
+};
+
+// What dump prints of a frame after its time: the COB-ID, the node, and
+// what the frame says, "601  node 1    SDO read 3000:01
+// config::drive::speed"; nullopt for a frame `options` leave out.
+std::optional<std::string> describe(can_frame const& frame,
+                                    dump_options const& options);
+
+// dump: prints every frame on the bus, decoded, with the time since the
+// start, until stopped. Sends nothing.
+boost::asio::awaitable<int> dump(transport& bus,
+                                 dump_options options,
+                                 console io);
+
 // sdo read: prints the object's value, or its string. The type is `type`
 // when given, else the dictionary's.
 boost::asio::awaitable<int> sdo_read(transport& bus,
