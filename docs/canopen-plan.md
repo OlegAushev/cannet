@@ -1,8 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 under
-way: the watch service, the GUI snapshot and the config service done;
-signal history next.
+Status: in progress — stages 1 (`cd2712d`), 0, 2, 3 and 4 done; stage 5
+(the CLI `canopen`) next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -88,7 +87,7 @@ target.
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
-| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch, the snapshot and config done |
+| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
@@ -396,7 +395,7 @@ value, a command (`clear_errors`), `type_mismatch` and the abort codes, about
 1–2 ms per exchange. Timeouts and cancellation were left to the emulated
 device.
 
-## Services (stage 4, in progress)
+## Services (stage 4, done)
 
 The services built on a node's dictionary are members of `remote_node`
 beside the protocol's own, and report what they read as events:
@@ -512,6 +511,22 @@ precision the GUI's to choose, and a web daemon sends numbers;
   };
   ```
 - CSV logging stays in the application.
+
+Verified on the loopback bus against the emulated device: the watch's
+passes, a device that stops answering and comes back, a request the
+transport cannot send, a node id change, the client gone, a handler that
+drops the node; the snapshot read from a thread of its own; every config
+operation, their order among the SDO client's, a cancellation, three
+timeouts in a row; history from a node's watch and from another thread.
+And on 2026-10-06 against the live ADPT-ETK Inverter (node 1, 500 kbit/s),
+reads only: every parameter, 85 of 85, in 62 ms, 0.7 ms each; the watch
+over 60 objects in 12 passes 250 ms apart, each 44–59 ms long, without a
+failure; a read of every parameter beside the watch, interleaved with it,
+85 of 85 in 121 ms; history's uptime samples 0.25 s apart, as the
+device's own uptime. Earlier that day, with the inverter switched off,
+the same run showed the services facing a silent device: the read of
+every parameter gave up after three timeouts, the watch kept one request
+in flight and reported each timeout, and history recorded NaN.
 
 ## CLI (stage 5)
 
