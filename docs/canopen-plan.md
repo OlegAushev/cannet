@@ -1,8 +1,7 @@
 # CANopen stack plan
 
-Status: in progress — stages 1 (`cd2712d`), 0, 2, 3 and 4 done; stage 5
-(the CLI `canopen`) under way: dictionaries as OD files done, the bus
-commands next.
+Status: in progress — stages 1 (`cd2712d`), 0, 2, 3, 4 and 5 done; stage 6,
+the pilot application, next.
 Last updated: 2026-10-06.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -75,7 +74,7 @@ canopen/
     service/ object_reading watch config     # stage 4, done
   src/ test/
   history/                                   # stage 4, done
-  tool/main.cpp od_tools                     # stage 5: CLI `canopen`
+  tool/main.cpp od_tools bus_commands        # stage 5, done: CLI `canopen`
   cmake/canopen_dictionary.cmake             # stage 5, done
 ```
 
@@ -91,7 +90,7 @@ target.
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | done |
-| 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | in progress: dictionaries as OD files done |
+| 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | done |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
 Stage 1 went first: the data layer needs no Asio. The transport interface and
@@ -124,8 +123,9 @@ In ucanopen the dictionary is two `std::map`s built at runtime, keyed by
 The dictionary used to be written twice, in the firmware and in the device
 application on the host. Since stage 5 the firmware's table is its only
 source: the application compiles in an OD file made from it (see
-[CLI](#cli-stage-5)), and `od-verify` walks a dictionary over SDO and checks
-readability, types and aborts against a live device.
+[CLI](#cli-stage-5)), and `od-verify` reads a dictionary's objects over SDO
+and checks them against a live device: that it has each, reads it as the
+dictionary says, and answers with its type's size.
 
 ## Transport and execution model (stage 0)
 
@@ -353,7 +353,7 @@ auto async_restore_default(od_key, Token&&);      // void
 - `async_write` announces the value's size, but the device takes the bytes
   as its own object's type: the value's type must be the object's. The
   client addresses objects by key and checks nothing against a dictionary;
-  the config service of stage 4 does, and so will the CLI.
+  the config service of stage 4 does, and so does the CLI.
 - `async_read_string` hides the device's string convention (4-byte expedited
   chunks up to a NUL) behind one operation, where ucanopen has a
   `StringReader` and a busy-wait in `get()`. It holds the channel until the
@@ -382,7 +382,7 @@ struct sdo_error {
 
 `type_mismatch` means the device answered a read with another size than the
 type read has: the dictionaries in the firmware and in the device
-application have drifted apart, which `od-verify` (stage 5) is to report.
+application have drifted apart, which `od-verify` (stage 5) reports.
 The config service reports it too for a value of another type than the
 object's, which it does not send.
 The earlier sketch's `not_found` and `access_denied` come from the device as
@@ -573,8 +573,83 @@ file in with `cannet_canopen_dictionary(<target> FILE <file.od> NAME
 <identifier>)`, which generates a header holding `inline constexpr auto
 <identifier> = cannet::canopen::dictionary{...}` with `canopen od header`,
 built for the purpose in a project that embeds cannet; the dictionary is
-checked again when compiled. `od-verify` catches a file grown stale against
-the firmware. The adpt-etk-inverter's table imports whole: 166 objects.
+checked again when compiled, and `od-verify` checks it against a device
+(below). The adpt-etk-inverter's table imports whole: 167 objects at
+`15a8617`.
+
+### Commands on a bus (done)
+
+```
+canopen dump <iface> [-d <file.od>] [--node <node>]
+canopen nmt <iface> <command> <node>|all
+canopen od-verify <iface> <node> -d <file.od>
+canopen sdo read <iface> <node> <object> [-d <file.od>] [--type <type>]
+canopen sdo write <iface> <node> <object> <value> [-d <file.od>] [--type <type>]
+canopen sdo exec <iface> <node> <object> [-d <file.od>]
+canopen watch <iface> <node> -d <file.od> [<object>...] [--period <ms>] [--count <passes>]
+```
+
+Each command is a coroutine over a `transport` in the CLI's library
+(`tool/bus_commands.hpp`): `main()` opens a `raw_transport` and runs one,
+and the tests run them against the emulated device on the loopback bus. An
+object is given by key, `3000:01`, or by name in the OD file `-d` names,
+`config::drive::speed`; its type by `--type`, else by the dictionary. The
+CLI is a node on the bus, 127 unless `--host-id` says otherwise, but its
+client never starts: it sends no heartbeat, no SYNC and no RPDO. The exit
+status is 0; 1 when the bus or the device failed the command; 2 when it was
+called wrong, before anything went on the bus.
+
+- Ctrl+C asks a command to stop between its requests. One in flight is let
+  finish, a string read to its NUL: the device's string cursor must not be
+  left mid-string, which a new process could not know. A second Ctrl+C ends
+  the process at once.
+- `dump` only listens, and decodes by the predefined connection set: NMT,
+  SYNC, heartbeats and boot-ups, emergencies, PDOs, and SDO requests and
+  answers with each object's name and value from the dictionary — a string
+  four characters at a time, an answer of another size than the
+  dictionary's type as its bytes. `--node` keeps one node's frames and those
+  for every node.
+- `sdo write` parses the value as the object's type before anything is sent.
+  `sdo exec` refuses an object the dictionary has as anything but a command:
+  the four zero bytes it writes would change a parameter.
+- `watch` prints a table per pass of the watch service. A pass ends at its
+  last object, or at a request the transport could not send, after which
+  the objects it did not read show as not read. On a terminal each pass is
+  drawn over the cleared screen — not an alternate screen, which a killed
+  process would leave behind — and a pass that runs over two periods, a
+  silent device's, is drawn as it goes. The objects to poll may be named,
+  so that a long table fits a screen.
+- `od-verify` reads every object of the dictionary and reports those the
+  device does not have as the dictionary does: an object it lacks, a
+  readable one it refuses as write-only, a write-only one it reads, an
+  answer of another size than the type's. A write-only object is read for
+  the device's refusal, which emblib's server gives before any reader runs.
+  Reads cannot tell whether an object takes a write, `ro` from `const`, or
+  two types of one size, and the check goes one way: an object the device
+  has and the file lacks goes unseen, for SDO cannot list a device's
+  objects. It gives up after three timeouts in a row.
+
+Verified against the emulated device on the loopback bus; on vcan through
+the kernel, NMT among it, with `cansock dump`; and on 2026-10-06 against the
+live ADPT-ETK Inverter (firmware `15a8617`, node 1), the acceptance scenario
+from a terminal:
+
+```
+canopen od from-emblib od.cpp --output inverter.od  # od.cpp at 15a8617
+canopen od-verify can0 1 -d inverter.od             # 167 match, in 0.15 s
+canopen dump can0 -d inverter.od                    # PDOs, heartbeat, SDO
+canopen sdo read can0 1 info::sys::device_name -d inverter.od
+canopen watch can0 1 -d inverter.od                 # 60 objects, 45 ms a pass
+canopen sdo write can0 1 config::protection::watchdog_timeout 1000 -d inverter.od
+canopen sdo exec can0 1 ctl::sys::clear_errors -d inverter.od
+```
+
+`od-verify` found the four mismatches planted in a copy of the file — a
+string typed uint8, a const object typed wo, a float32 typed uint16, an
+object the device lacks — and passed the file made from the repository's
+head, newer than the firmware, which has lost an object and renamed
+another: the check goes one way. The write gave the parameter its own
+value back, and `nmt` went to vcan only.
 
 ## Pilot application (stage 6)
 
@@ -666,6 +741,9 @@ on what a desktop GUI never had to:
 | 2026-10-06 | A history signal is a node's object, keyed by the node's name and the object's key; each is a `circular_buffer_space_optimized`; a failed watch read is recorded as NaN |
 | 2026-10-06 | A dictionary outside the code is an OD file, a text format cannet defines: one object per line, the access and type by their `name()`s; it is read with `dictionary<N>`'s checks, its errors tied to lines |
 | 2026-10-06 | The firmware's table is the dictionary's only source: `canopen od from-emblib` makes the OD file (the generator in cannet for now), `cannet_canopen_dictionary()` compiles it into the application through a generated header, `od-verify` catches a stale file |
+| 2026-10-06 | The CLI's bus commands are coroutines over a transport, tested against the emulated device on the loopback bus; the CLI's own node never starts, so it sends no heartbeat, SYNC or RPDO |
+| 2026-10-06 | Ctrl+C stops a CLI command between its requests: the one in flight finishes, a string read to its NUL |
+| 2026-10-06 | `od-verify` only reads: it checks the file's objects against the device, not the device's against the file, and not whether an object takes a write |
 
 ## Open questions
 
