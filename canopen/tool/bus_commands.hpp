@@ -64,6 +64,11 @@ std::string label(object_ref const& object);
 // A type by its name(), "uint16", as an OD file gives it.
 std::optional<od_value_type> parse_type(std::string_view text);
 
+// An NMT command as the CLI names it, nmt takes it and dump shows it:
+// "start", "stop", "pre-operational", "reset-node", "reset-communication".
+std::string_view cli_name(nmt_command command);
+std::optional<nmt_command> parse_nmt_command(std::string_view text);
+
 struct dump_options {
   // Only this node's frames, and those for every node (NMT, SYNC, TIME);
   // nullopt: every frame.
@@ -122,5 +127,11 @@ struct watch_options {
 // their readings, a table per pass, until stopped or `count` passes.
 boost::asio::awaitable<int>
 watch(transport& bus, node_options options, watch_options watching, console io);
+
+// nmt: sends an NMT command to `target`, or to every node. Prints nothing.
+boost::asio::awaitable<int> nmt(transport& bus,
+                                nmt_command command,
+                                std::optional<node_id> target,
+                                console io);
 
 } // namespace cannet::canopen::tool

@@ -4,6 +4,7 @@
 // canup); no privileges required:
 // dump: prints every frame on the bus, decoded, until interrupted (Ctrl+C);
 //       sends nothing.
+// nmt: sends one NMT command, to a node or to every node.
 // sdo read|write|exec: one SDO request to a node.
 // watch: polls a node's watch objects and prints a table per pass, until
 //        interrupted.
@@ -60,6 +61,7 @@ int usage()
   std::print(stderr,
              "usage:\n"
              "  canopen dump <iface> [-d <file.od>] [--node <node>]\n"
+             "  canopen nmt <iface> <command> <node>|all\n"
              "  canopen sdo read <iface> <node> <object> [-d <file.od>]\n"
              "                   [--type <type>]\n"
              "  canopen sdo write <iface> <node> <object> <value>\n"
@@ -78,6 +80,8 @@ int usage()
              "An <object> is index:subindex in hex (3000:01), or\n"
              "category::subcategory::name in the dictionary -d gives.\n"
              "A <type> is named as in an OD file: uint16, float32...\n"
+             "An NMT <command> is start, stop, pre-operational, reset-node\n"
+             "or reset-communication.\n"
              "Commands on a <node> take --host-id <id>, the CLI's own\n"
              "node id (127), and --timeout <ms>, the SDO timeout (500).\n"
              "A node has one SDO channel: leave alone a node that an\n"
@@ -356,6 +360,30 @@ int dump(std::span<std::string_view const> args)
   });
 }
 
+int nmt(std::span<std::string_view const> args)
+{
+  auto const parsed = parse_arguments(args, {});
+  if (!parsed || parsed->positional.size() != 3) {
+    return usage();
+  }
+  auto const& positional = parsed->positional;
+  auto const command = tool::parse_nmt_command(positional[1]);
+  if (!command) {
+    std::print(stderr, "canopen: not an NMT command: {}\n", positional[1]);
+    return 2;
+  }
+  std::optional<node_id> target;
+  if (positional[2] != "all") {
+    target = parse_node_id(positional[2]);
+    if (!target) {
+      return 2;
+    }
+  }
+  return run_on_bus(positional[0], [&](transport& bus) {
+    return tool::nmt(bus, *command, target, terminal());
+  });
+}
+
 int sdo(std::string_view what, std::span<std::string_view const> args)
 {
   bool const read = what == "read";
@@ -525,6 +553,9 @@ int main(int argc, char** argv)
   std::vector<std::string_view> const args(argv + 1, argv + argc);
   if (!args.empty() && args[0] == "dump") {
     return dump(std::span{args}.subspan(1));
+  }
+  if (!args.empty() && args[0] == "nmt") {
+    return nmt(std::span{args}.subspan(1));
   }
   if (args.size() < 2) {
     return usage();

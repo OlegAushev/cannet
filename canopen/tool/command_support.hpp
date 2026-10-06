@@ -36,10 +36,6 @@ inline boost::asio::awaitable<bool> stop_requested()
   co_return state.cancelled() != boost::asio::cancellation_type::none;
 }
 
-// An NMT command as the CLI names it, nmt takes it and dump shows it:
-// "start", "stop", "pre-operational", "reset-node", "reset-communication".
-std::string_view cli_name(nmt_command command);
-
 // The CLI's own node, which is never started.
 client_options host_options(node_options const& options);
 

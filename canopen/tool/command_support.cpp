@@ -132,6 +132,20 @@ std::string_view cli_name(nmt_command command)
   return "unknown";
 }
 
+std::optional<nmt_command> parse_nmt_command(std::string_view text)
+{
+  for (auto const command : {nmt_command::start,
+                             nmt_command::stop,
+                             nmt_command::enter_pre_operational,
+                             nmt_command::reset_node,
+                             nmt_command::reset_communication}) {
+    if (cli_name(command) == text) {
+      return command;
+    }
+  }
+  return std::nullopt;
+}
+
 client_options host_options(node_options const& options)
 {
   return {.id = options.host, .heartbeat_period = 0ms, .sync_period = 0ms};
