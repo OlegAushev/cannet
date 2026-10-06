@@ -52,8 +52,14 @@ void print_frame(can_frame const& frame)
   else {
     std::print("{:03X}  [{}] ", frame.can_id & CAN_SFF_MASK, frame.len);
   }
-  for (int i = 0; i < frame.len; ++i) {
-    std::print(" {:02X}", frame.data[i]);
+  if ((frame.can_id & CAN_RTR_FLAG) != 0) {
+    // A remote frame carries no data: len is the length it requests.
+    std::print(" remote request");
+  }
+  else {
+    for (int i = 0; i < frame.len; ++i) {
+      std::print(" {:02X}", frame.data[i]);
+    }
   }
   std::print("\n");
 }
