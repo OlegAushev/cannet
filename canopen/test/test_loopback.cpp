@@ -286,11 +286,13 @@ TEST_CASE("endpoints outlive the bus object and subscriptions their transport",
   CHECK(received == ids{0x1});
 }
 
-TEST_CASE("every transport_error has a name", "[transport]")
+TEST_CASE("every transport_error has a description and a name", "[transport]")
 {
   for (auto const e : {transport_error::closed,
                        transport_error::send_failed,
                        transport_error::tx_queue_full}) {
     CHECK(to_string(e) != "unknown error");
+    CHECK(name(e) != "unknown");
   }
+  CHECK(name(transport_error::tx_queue_full) == "tx_queue_full");
 }

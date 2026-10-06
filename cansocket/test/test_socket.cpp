@@ -9,7 +9,7 @@
 using namespace cannet::raw;
 using namespace std::chrono_literals;
 
-TEST_CASE("every socket_error has a name", "[socket]")
+TEST_CASE("every socket_error has a description and a name", "[socket]")
 {
   for (auto const e : {socket_error::not_open,
                        socket_error::create_failed,
@@ -23,7 +23,10 @@ TEST_CASE("every socket_error has a name", "[socket]")
                        socket_error::recv_failed,
                        socket_error::cancelled}) {
     CHECK(to_string(e) != "unknown error");
+    CHECK(name(e) != "unknown");
   }
+  CHECK(name(socket_error::tx_queue_full) == "tx_queue_full");
+  CHECK(name(static_cast<socket_error>(-1)) == "unknown");
 }
 
 TEST_CASE("socket reports a missing interface", "[socket]")

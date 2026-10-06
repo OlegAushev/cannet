@@ -96,7 +96,12 @@ private:
   int fd_ = -1;
 };
 
-// Returns human-readable name for a `socket_error` (for logging / CLI output).
+// A human-readable description of a `socket_error`, for people; the wording
+// may change.
 std::string_view to_string(socket_error e);
+
+// The stable identifier of a `socket_error`: its enumerator's name, such as
+// "tx_queue_full", for logs and formats a program reads.
+std::string_view name(socket_error e);
 
 } // namespace cannet::raw

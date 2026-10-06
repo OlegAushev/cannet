@@ -58,8 +58,13 @@ std::expected<void, failure_report> down(std::string_view iface);
 // Reads the interface state and configured bitrate. No privileges required.
 std::expected<network_state, failure_report> status(std::string_view iface);
 
-// Returns human-readable names (for logging / CLI output).
+// Human-readable descriptions, for people; the wording may change.
 std::string_view to_string(operation op);
 std::string_view to_string(error e);
+
+// Stable identifiers: the enumerators' names, such as "permission_denied",
+// for logs and formats a program reads.
+std::string_view name(operation op);
+std::string_view name(error e);
 
 } // namespace cannet::canup

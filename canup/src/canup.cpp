@@ -177,4 +177,29 @@ std::string_view to_string(error e)
   return "unknown error";
 }
 
+std::string_view name(operation op)
+{
+  switch (op) {
+  case operation::stop: return "stop";
+  case operation::set_bitrate: return "set_bitrate";
+  case operation::set_restart_ms: return "set_restart_ms";
+  case operation::start: return "start";
+  case operation::get_state: return "get_state";
+  case operation::get_bittiming: return "get_bittiming";
+  }
+  return "unknown";
+}
+
+std::string_view name(error e)
+{
+  switch (e) {
+  case error::invalid_bitrate: return "invalid_bitrate";
+  case error::device_not_found: return "device_not_found";
+  case error::permission_denied: return "permission_denied";
+  case error::not_supported: return "not_supported";
+  case error::netlink_error: return "netlink_error";
+  }
+  return "unknown";
+}
+
 } // namespace cannet::canup

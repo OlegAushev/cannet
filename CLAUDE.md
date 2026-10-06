@@ -83,6 +83,11 @@ Rules:
   enum plus a `to_string()` for it; no exceptions cross an API boundary, and
   errors that are routine and retryable (e.g. a full TX queue) get their own
   enumerator rather than being folded into a generic failure.
+- Every public enum a program may branch on — the error enums first — has,
+  beside `to_string()` (a phrase for people, free to change), `name()`: a
+  stable identifier, the enumerator's own name (`tx_queue_full`), for logs,
+  JSON and anything else a program reads. Rewording a message breaks no
+  client.
 - Every public header opens with a doc comment stating what the type is, which
   plane it belongs to, what privileges it needs, and its thread model.
 - Public headers are `.hpp` and are included as `<lib/path/name.hpp>`, never

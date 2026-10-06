@@ -14,6 +14,16 @@ std::string_view to_string(transport_error e)
   return "unknown error";
 }
 
+std::string_view name(transport_error e)
+{
+  switch (e) {
+  case transport_error::closed: return "closed";
+  case transport_error::send_failed: return "send_failed";
+  case transport_error::tx_queue_full: return "tx_queue_full";
+  }
+  return "unknown";
+}
+
 subscription::subscription(std::move_only_function<void()> cancel)
     : cancel_(std::move(cancel))
 {

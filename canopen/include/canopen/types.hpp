@@ -189,7 +189,13 @@ inline can_frame make_frame(canid_t id, std::uint8_t len, payload const& data)
   return frame;
 }
 
+// Human-readable descriptions, for people; the wording may change.
 std::string_view to_string(nmt_state state);
 std::string_view to_string(nmt_command command);
+
+// Stable identifiers: the enumerators' names, such as "pre_operational", for
+// logs and formats a program reads.
+std::string_view name(nmt_state state);
+std::string_view name(nmt_command command);
 
 } // namespace cannet::canopen

@@ -152,7 +152,13 @@ constexpr expedited_sdo make_sdo_write_request(std::uint16_t index,
   return sdo;
 }
 
-// Returns a human-readable description of an SDO abort code (CiA 301 §7.2.4).
+// Returns a human-readable description of an SDO abort code (CiA 301 §7.2.4),
+// for people; the wording may change.
 std::string_view to_string(sdo_abort_code code);
+
+// The stable identifier of an SDO abort code: its enumerator's name, such as
+// "object_not_found", for logs and formats a program reads. A code cannet has
+// no enumerator for is "unknown"; its number tells it apart.
+std::string_view name(sdo_abort_code code);
 
 } // namespace cannet::canopen

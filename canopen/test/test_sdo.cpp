@@ -89,7 +89,7 @@ TEST_CASE("an expedited response is not mistaken for an abort", "[sdo]")
   CHECK_FALSE(response.valid());
 }
 
-TEST_CASE("every abort code has a message", "[sdo]")
+TEST_CASE("every abort code has a message and a name", "[sdo]")
 {
   sdo_abort_code const codes[] = {sdo_abort_code::invalid_cs,
                                   sdo_abort_code::unsupported_access,
@@ -112,8 +112,11 @@ TEST_CASE("every abort code has a message", "[sdo]")
     auto const message = to_string(code);
     CHECK_FALSE(message.empty());
     CHECK(message != "unknown abort code");
+    CHECK(name(code) != "unknown");
   }
 
   CHECK(to_string(static_cast<sdo_abort_code>(0x1234'5678))
         == "unknown abort code");
+  CHECK(name(sdo_abort_code::object_not_found) == "object_not_found");
+  CHECK(name(static_cast<sdo_abort_code>(0x1234'5678)) == "unknown");
 }

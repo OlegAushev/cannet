@@ -133,6 +133,16 @@ std::string_view to_string(parse_error e)
   return "unknown error";
 }
 
+std::string_view name(parse_error e)
+{
+  switch (e) {
+  case parse_error::syntax: return "syntax";
+  case parse_error::out_of_range: return "out_of_range";
+  case parse_error::unsupported_type: return "unsupported_type";
+  }
+  return "unknown";
+}
+
 std::string to_string(od_value value, int precision)
 {
   return std::visit(
@@ -194,6 +204,34 @@ std::string_view to_string(od_value_type type)
 }
 
 std::string_view to_string(od_access access)
+{
+  switch (access) {
+  case od_access::rw: return "rw";
+  case od_access::ro: return "ro";
+  case od_access::wo: return "wo";
+  case od_access::const_: return "const";
+  }
+  return "unknown";
+}
+
+std::string_view name(od_value_type type)
+{
+  switch (type) {
+  case od_value_type::boolean: return "boolean";
+  case od_value_type::int8: return "int8";
+  case od_value_type::int16: return "int16";
+  case od_value_type::int32: return "int32";
+  case od_value_type::uint8: return "uint8";
+  case od_value_type::uint16: return "uint16";
+  case od_value_type::uint32: return "uint32";
+  case od_value_type::float32: return "float32";
+  case od_value_type::exec: return "exec";
+  case od_value_type::string: return "string";
+  }
+  return "unknown";
+}
+
+std::string_view name(od_access access)
 {
   switch (access) {
   case od_access::rw: return "rw";

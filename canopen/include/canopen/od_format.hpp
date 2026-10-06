@@ -21,7 +21,13 @@ enum class parse_error {
   unsupported_type // type carries no user-writable scalar (string)
 };
 
+// A human-readable description of a `parse_error`, for people; the wording
+// may change.
 std::string_view to_string(parse_error e);
+
+// The stable identifier of a `parse_error`: its enumerator's name, such as
+// "out_of_range", for logs and formats a program reads.
+std::string_view name(parse_error e);
 
 // Formats a value for display. `precision` applies to floats only: they are
 // printed fixed, or in general format when the magnitude is small enough that
@@ -34,7 +40,14 @@ std::string to_string(od_value value, int precision = 6);
 std::expected<od_value, parse_error> parse(std::string_view text,
                                            od_value_type type);
 
+// The short names a UI or CLI shows for a type ("bool", "uint16") and an
+// access ("rw", "const").
 std::string_view to_string(od_value_type type);
 std::string_view to_string(od_access access);
+
+// Stable identifiers for formats a program reads: the enumerators' names
+// ("boolean", "uint16"), without the C++ underscore of `const_` ("const").
+std::string_view name(od_value_type type);
+std::string_view name(od_access access);
 
 } // namespace cannet::canopen

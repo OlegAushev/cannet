@@ -89,3 +89,26 @@ TEST_CASE("type and access names", "[od_format]")
   CHECK(to_string(od_access::const_) == "const");
   CHECK_FALSE(to_string(parse_error::out_of_range).empty());
 }
+
+TEST_CASE("types, accesses and parse errors have stable names", "[od_format]")
+{
+  CHECK(name(od_value_type::boolean) == "boolean");
+  CHECK(name(od_value_type::int8) == "int8");
+  CHECK(name(od_value_type::int16) == "int16");
+  CHECK(name(od_value_type::int32) == "int32");
+  CHECK(name(od_value_type::uint8) == "uint8");
+  CHECK(name(od_value_type::uint16) == "uint16");
+  CHECK(name(od_value_type::uint32) == "uint32");
+  CHECK(name(od_value_type::float32) == "float32");
+  CHECK(name(od_value_type::exec) == "exec");
+  CHECK(name(od_value_type::string) == "string");
+
+  CHECK(name(od_access::rw) == "rw");
+  CHECK(name(od_access::ro) == "ro");
+  CHECK(name(od_access::wo) == "wo");
+  CHECK(name(od_access::const_) == "const");
+
+  CHECK(name(parse_error::syntax) == "syntax");
+  CHECK(name(parse_error::out_of_range) == "out_of_range");
+  CHECK(name(parse_error::unsupported_type) == "unsupported_type");
+}

@@ -108,3 +108,18 @@ TEST_CASE("NMT commands carry their wire codes", "[types]")
   CHECK(to_string(nmt_state::stopped) == "stopped");
   CHECK(to_string(nmt_command::reset_node) == "reset node");
 }
+
+TEST_CASE("NMT states and commands have stable names", "[types]")
+{
+  CHECK(name(nmt_state::initializing) == "initializing");
+  CHECK(name(nmt_state::stopped) == "stopped");
+  CHECK(name(nmt_state::operational) == "operational");
+  CHECK(name(nmt_state::pre_operational) == "pre_operational");
+  CHECK(name(static_cast<nmt_state>(0x42)) == "unknown");
+
+  CHECK(name(nmt_command::start) == "start");
+  CHECK(name(nmt_command::stop) == "stop");
+  CHECK(name(nmt_command::enter_pre_operational) == "enter_pre_operational");
+  CHECK(name(nmt_command::reset_node) == "reset_node");
+  CHECK(name(nmt_command::reset_communication) == "reset_communication");
+}

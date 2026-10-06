@@ -150,4 +150,22 @@ std::string_view to_string(socket_error e)
   return "unknown error";
 }
 
+std::string_view name(socket_error e)
+{
+  switch (e) {
+  case socket_error::not_open: return "not_open";
+  case socket_error::create_failed: return "create_failed";
+  case socket_error::interface_not_found: return "interface_not_found";
+  case socket_error::bind_failed: return "bind_failed";
+  case socket_error::set_option_failed: return "set_option_failed";
+  case socket_error::close_failed: return "close_failed";
+  case socket_error::send_failed: return "send_failed";
+  case socket_error::tx_queue_full: return "tx_queue_full";
+  case socket_error::recv_timeout: return "recv_timeout";
+  case socket_error::recv_failed: return "recv_failed";
+  case socket_error::cancelled: return "cancelled";
+  }
+  return "unknown";
+}
+
 } // namespace cannet::raw

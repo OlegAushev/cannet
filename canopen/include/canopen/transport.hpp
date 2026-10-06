@@ -31,8 +31,13 @@ enum class transport_error {
                  // transient, routine on short-queue (SPI) controllers
 };
 
-// Returns human-readable name for a `transport_error` (for logging / CLI).
+// A human-readable description of a `transport_error`, for people; the
+// wording may change.
 std::string_view to_string(transport_error e);
+
+// The stable identifier of a `transport_error`: its enumerator's name, such
+// as "tx_queue_full", for logs and formats a program reads.
+std::string_view name(transport_error e);
 
 // Delivery of frames to one handler, in force until the subscription is
 // destroyed or reset(). Move-only; a default-constructed subscription is
