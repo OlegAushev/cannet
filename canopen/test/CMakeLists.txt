@@ -8,6 +8,7 @@ add_executable(canopen-tests
     test_od_header.cpp
     test_dump.cpp
     test_nmt_command.cpp
+    test_od_verify.cpp
     test_sdo_commands.cpp
     test_watch_command.cpp
     test_event.cpp

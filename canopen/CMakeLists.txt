@@ -59,6 +59,7 @@ add_library(canopen_tool STATIC
     tool/command_support.cpp
     tool/dump.cpp
     tool/nmt_command.cpp
+    tool/od_verify.cpp
     tool/sdo_commands.cpp
     tool/watch_command.cpp
 )

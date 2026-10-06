@@ -134,4 +134,13 @@ boost::asio::awaitable<int> nmt(transport& bus,
                                 std::optional<node_id> target,
                                 console io);
 
+// od-verify: reads every object of the dictionary and prints those the
+// device does not have as the dictionary does: an object it lacks, one it
+// reads that the dictionary has write-only or the other way round, a
+// value of another size. Writes nothing, and so cannot tell whether an
+// object takes a write. Gives up after three timeouts in a row.
+boost::asio::awaitable<int> od_verify(transport& bus,
+                                      node_options options,
+                                      console io);
+
 } // namespace cannet::canopen::tool

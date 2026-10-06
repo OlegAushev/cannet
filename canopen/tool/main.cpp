@@ -5,6 +5,8 @@
 // dump: prints every frame on the bus, decoded, until interrupted (Ctrl+C);
 //       sends nothing.
 // nmt: sends one NMT command, to a node or to every node.
+// od-verify: reads every object of a node's dictionary and reports those the
+//            node does not have as the dictionary does; writes nothing.
 // sdo read|write|exec: one SDO request to a node.
 // watch: polls a node's watch objects and prints a table per pass, until
 //        interrupted.
@@ -62,6 +64,7 @@ int usage()
              "usage:\n"
              "  canopen dump <iface> [-d <file.od>] [--node <node>]\n"
              "  canopen nmt <iface> <command> <node>|all\n"
+             "  canopen od-verify <iface> <node> -d <file.od>\n"
              "  canopen sdo read <iface> <node> <object> [-d <file.od>]\n"
              "                   [--type <type>]\n"
              "  canopen sdo write <iface> <node> <object> <value>\n"
@@ -384,6 +387,21 @@ int nmt(std::span<std::string_view const> args)
   });
 }
 
+int od_verify(std::span<std::string_view const> args)
+{
+  auto const parsed = parse_arguments(args, {"-d", "--host-id", "--timeout"});
+  if (!parsed || parsed->positional.size() != 2) {
+    return usage();
+  }
+  auto const target = device_of(*parsed, parsed->positional[1]);
+  if (!target) {
+    return 2;
+  }
+  return run_on_bus(parsed->positional[0], [&](transport& bus) {
+    return tool::od_verify(bus, target->options, terminal());
+  });
+}
+
 int sdo(std::string_view what, std::span<std::string_view const> args)
 {
   bool const read = what == "read";
@@ -556,6 +574,9 @@ int main(int argc, char** argv)
   }
   if (!args.empty() && args[0] == "nmt") {
     return nmt(std::span{args}.subspan(1));
+  }
+  if (!args.empty() && args[0] == "od-verify") {
+    return od_verify(std::span{args}.subspan(1));
   }
   if (args.size() < 2) {
     return usage();
