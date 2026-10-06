@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 using namespace cannet::canopen;
@@ -185,4 +186,16 @@ TEST_CASE("exec and string are carried as uint32", "[od]")
   REQUIRE(std::holds_alternative<std::uint32_t>(as_string));
   REQUIRE(std::holds_alternative<std::uint32_t>(as_exec));
   CHECK(to_raw(as_string) == raw);
+}
+
+TEST_CASE("a value's type is that of its alternative", "[od]")
+{
+  STATIC_CHECK(type_of(od_value{true}) == od_value_type::boolean);
+  STATIC_CHECK(type_of(od_value{std::int8_t{-1}}) == od_value_type::int8);
+  STATIC_CHECK(type_of(od_value{std::int16_t{-1}}) == od_value_type::int16);
+  STATIC_CHECK(type_of(od_value{std::int32_t{-1}}) == od_value_type::int32);
+  STATIC_CHECK(type_of(od_value{std::uint8_t{1}}) == od_value_type::uint8);
+  STATIC_CHECK(type_of(od_value{std::uint16_t{1}}) == od_value_type::uint16);
+  STATIC_CHECK(type_of(od_value{std::uint32_t{1}}) == od_value_type::uint32);
+  STATIC_CHECK(type_of(od_value{1.5f}) == od_value_type::float32);
 }

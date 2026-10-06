@@ -1,7 +1,7 @@
 # CANopen stack plan
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2 and 3 done; stage 4 under
-way: the watch service and the GUI snapshot done; the config service and
+way: the watch service, the GUI snapshot and the config service done;
 signal history next.
 Last updated: 2026-10-06.
 
@@ -65,13 +65,12 @@ canopen/
     transport.hpp raw_transport.hpp
     loopback.hpp                             # stage 0, done
     subscription.hpp event.hpp
-    client.hpp remote_node.hpp setup_error.hpp
+    client.hpp remote_node.hpp setup_error.hpp sdo_error.hpp
     snapshot.hpp watch_snapshot.hpp          # stage 4, done
     detail/  hb_consumer emcy_consumer
              tpdo_consumer rpdo_producer     # stage 2, done
              sdo_client                      # stage 3, done
-    service/ object_reading watch            # stage 4, done
-             config                          # stage 4
+    service/ object_reading watch config     # stage 4, done
   src/ test/
   tool/main.cpp                              # stage 5: CLI `canopen`
 ```
@@ -86,7 +85,7 @@ canopen/
 | 1 | Wire data layer: `types.hpp`, `sdo.hpp`, `od.hpp`, `od_format.hpp`; Catch2 | codec and dictionary unit tests | done, `cd2712d` |
 | 2 | `client`, `remote_node` and their services, events | exchange with an emulated device on the loopback bus; SYNC and heartbeat visible in `candump` on vcan | done |
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
-| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch and the snapshot done |
+| 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | in progress: watch, the snapshot and config done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | |
 | 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | |
 
@@ -236,7 +235,7 @@ public:
   detail::tpdo_consumer tpdo;    // per TPDO: handler, timeout, on_timeout
   detail::rpdo_producer rpdo;    // per RPDO: provider, period; enable/disable
   service::watch watch;          // stage 4: polls the watch objects over SDO
-  // next: service::config
+  service::config config;        // stage 4: the parameters
 };
 ```
 
@@ -347,7 +346,7 @@ auto async_restore_default(od_key, Token&&);      // void
 - `async_write` announces the value's size, but the device takes the bytes
   as its own object's type: the value's type must be the object's. The
   client addresses objects by key and checks nothing against a dictionary;
-  that belongs to the services of stage 4 and the CLI.
+  the config service of stage 4 does, and so will the CLI.
 - `async_read_string` hides the device's string convention (4-byte expedited
   chunks up to a NUL) behind one operation, where ucanopen has a
   `StringReader` and a busy-wait in `get()`. It holds the channel until the
@@ -377,6 +376,8 @@ struct sdo_error {
 `type_mismatch` means the device answered a read with another size than the
 type read has: the dictionaries in the firmware and in the device
 application have drifted apart, which `od-verify` (stage 5) is to report.
+The config service reports it too for a value of another type than the
+object's, which it does not send.
 The earlier sketch's `not_found` and `access_denied` come from the device as
 aborts (`object_not_found`, `read_from_write_only`, `write_to_read_only`)
 and are reported as `aborted` with the code; `malformed` covers what the
@@ -439,8 +440,29 @@ precision the GUI's to choose, and a web daemon sends numbers;
   the error of the last read if it failed, and the time, and publishes the
   table after every reading. The application keeps its own state, such as
   the values it decodes from TPDOs, in a `snapshot<T>` of its own.
-- `service::config` covers the config category: read all parameters, write
-  one, save all, restore one to its default.
+- `service::config` (done) covers the config category, whose objects
+  `parameters()` lists by key. `async_read_all()` reads every readable one
+  but strings, one request at a time, and completes with the readings, each
+  also an event as it comes: a GUI's progress. An abort or a single timeout
+  is the reading of its parameter, and the read goes on; three timeouts in a
+  row end it with `timeout`, as in ucanopen's config service — the device is
+  not there, and the rest would time out one by one — and so do a request
+  the transport cannot send and a cancellation. `async_read()` and
+  `async_write()` take a dictionary entry and type the request by it: a
+  value of another type than the object's completes with `type_mismatch`
+  and is not sent. `async_save_all()` and `async_restore_all_defaults()`
+  write CiA 301's signatures, "save" to 1010h:01 and "load" to 1011h:01:
+  emblib's devices ignore a command's bytes, and a CiA 301 device refuses a
+  command without them; every ucan-monitor device that has these commands
+  keeps them at these keys. `async_restore_default()` is the SDO client's
+  1011h:04.
+
+  Operations keep their callers' order, among themselves and among the SDO
+  client's: a service already on the client's executor queues its SDO
+  requests without the hop the SDO client's operations make first, so a
+  write made before a restore reaches the device first. The services'
+  operations and the SDO client's are one composed operation,
+  `detail::client_op`.
 - `cannet::canopen-history` keeps signal history for plots inside cannet, so
   that each application does not rewrite it. It is a separate, optional
   target: only a GUI needs it, and a headless application or the CLI does not
@@ -571,6 +593,8 @@ on what a desktop GUI never had to:
 | 2026-10-06 | The services built on a dictionary are members of `remote_node` and report reads as `object_reading` events: the value or the error, and the time; no formatted text |
 | 2026-10-06 | The watch keeps one request in flight; its period separates the starts of passes, zero (the default) stops it; a timeout is reported and the pass goes on, a transport failure ends the pass; `disable()` drops the read in flight |
 | 2026-10-06 | A GUI thread reads state through `snapshot<T>`, a triple buffer, so that neither side waits for the other; `watch_snapshot` keeps each watched object's last value, last error and time |
+| 2026-10-06 | The config service types reads and writes by the dictionary and does not send a value of another type; storing and restoring all are CiA 301's 1010h:01 and 1011h:01 with "save" and "load"; reading all gives up after three timeouts in a row |
+| 2026-10-06 | A service's operations keep their callers' order among the SDO client's: on the client's executor, a service queues its requests without a hop |
 
 ## Open questions
 

@@ -37,6 +37,7 @@
 #include <span>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <variant>
 
 namespace cannet::canopen {
@@ -99,6 +100,43 @@ constexpr std::size_t od_value_size(od_value_type type)
       4,
       4};
   return sizes[std::to_underlying(type)];
+}
+
+// The type a value travels as: that of its alternative. Never exec or
+// string, which no od_value holds.
+constexpr od_value_type type_of(od_value const& value)
+{
+  return std::visit(
+      []<typename T>(T const&) {
+        if constexpr (std::is_same_v<T, bool>) {
+          return od_value_type::boolean;
+        }
+        else if constexpr (std::is_same_v<T, std::int8_t>) {
+          return od_value_type::int8;
+        }
+        else if constexpr (std::is_same_v<T, std::int16_t>) {
+          return od_value_type::int16;
+        }
+        else if constexpr (std::is_same_v<T, std::int32_t>) {
+          return od_value_type::int32;
+        }
+        else if constexpr (std::is_same_v<T, std::uint8_t>) {
+          return od_value_type::uint8;
+        }
+        else if constexpr (std::is_same_v<T, std::uint16_t>) {
+          return od_value_type::uint16;
+        }
+        else if constexpr (std::is_same_v<T, std::uint32_t>) {
+          return od_value_type::uint32;
+        }
+        else if constexpr (std::is_same_v<T, float>) {
+          return od_value_type::float32;
+        }
+        else {
+          static_assert(false, "od: an od_value alternative has no type");
+        }
+      },
+      value);
 }
 
 // Decodes the raw 4-byte SDO data field per the object's declared type.

@@ -36,7 +36,8 @@ namespace cannet::canopen::test {
 struct device_object {
   od_value_type type;
   od_access access;
-  expedited_sdo_data value{};                   // a scalar's bytes
+  expedited_sdo_data value{};                   // a scalar's bytes, or the
+                                                // last a command was sent
   std::string text{};                           // a string's
   std::optional<expedited_sdo_data> fallback{}; // restorable when set
   int executed = 0;                             // an exec object's runs
@@ -244,11 +245,9 @@ private:
       return std::unexpected(sdo_abort_code::write_to_read_only);
     }
     if (object.type == od_value_type::exec) {
-      ++object.executed; // a command: the bytes are not a value
-    }
-    else {
-      object.value = rsdo.data; // taken as the object's own type
-    }
+      ++object.executed; // a command: the bytes are not a value, though
+    } // kept for a test to look at
+    object.value = rsdo.data; // taken as the object's own type
     return written(rsdo);
   }
 

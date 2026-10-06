@@ -20,6 +20,7 @@
 #include <canopen/detail/sdo_client.hpp>
 #include <canopen/detail/tpdo_consumer.hpp>
 #include <canopen/od.hpp>
+#include <canopen/service/config.hpp>
 #include <canopen/service/watch.hpp>
 #include <canopen/transport.hpp>
 #include <canopen/types.hpp>
@@ -61,6 +62,7 @@ public:
   detail::tpdo_consumer tpdo;
   detail::rpdo_producer rpdo;
   service::watch watch;
+  service::config config;
 
 private:
   friend class client;

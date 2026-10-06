@@ -11,6 +11,7 @@ remote_node::remote_node(transport& bus, remote_node_options options)
       tpdo(bus, options.id),
       rpdo(bus, options.id),
       watch(sdo, options.dictionary),
+      config(sdo, options.dictionary),
       name_(std::move(options.name)),
       id_(options.id),
       dictionary_(options.dictionary)
@@ -63,6 +64,7 @@ void remote_node::detach()
 {
   rpdo.stop();
   watch.close();
+  config.close();
   sdo.close();
 }
 

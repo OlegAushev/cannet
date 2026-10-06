@@ -65,6 +65,7 @@ using sdo_outcome =
 using sdo_completion = std::move_only_function<void(sdo_outcome)>;
 
 struct sdo_state;
+struct config_state;
 
 // Queues `request` on the client's executor. `complete` runs exactly once:
 // with the worker's verdict, or with `cancelled` when `slot` fires first.
@@ -178,6 +179,7 @@ public:
 
 private:
   friend class cannet::canopen::remote_node;
+  friend struct config_state;
 
   // A request in flight completes with `cancelled`; queued ones go to the
   // new id.
@@ -185,6 +187,17 @@ private:
   // Requests in flight and queued, and every later one, complete with
   // transport_error::closed: the client is gone.
   void close();
+
+  // For a service already on the client's executor: queues `request` at
+  // once, as sdo_submit() does. The operations above first hop onto the
+  // executor; a service's request skips that hop, and so keeps its
+  // caller's order among theirs.
+  void queue(sdo_request const& request,
+             boost::asio::cancellation_slot slot,
+             sdo_completion complete)
+  {
+    sdo_submit(state_, request, slot, std::move(complete));
+  }
 
   // Captures no `this`: a deferred operation may start after the node is
   // gone.

@@ -24,6 +24,7 @@ add_library(canopen
     src/sdo_client.cpp
     src/watch.cpp
     src/watch_snapshot.cpp
+    src/config.cpp
     src/remote_node.cpp
     src/client.cpp
 )

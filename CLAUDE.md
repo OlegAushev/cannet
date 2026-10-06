@@ -69,10 +69,11 @@ what privileges they need. A plane never reaches upward.
   nodes), `remote_node.hpp` (one device: SDO client, heartbeat, EMCY, TPDO
   and RPDO services) and `event.hpp` (how services report what happens);
   and over SDO the services built on a node's dictionary, under `service/`:
-  `watch.hpp` (polling the watch objects), reporting `object_reading`s; and
-  for a GUI on a thread of its own, `snapshot.hpp` (a lock-free triple
-  buffer) and `watch_snapshot.hpp`. The config service and signal history
-  come next.
+  `watch.hpp` (polling the watch objects) and `config.hpp` (the parameters:
+  read all, typed reads and writes, store and restore), reporting
+  `object_reading`s; and for a GUI on a thread of its own, `snapshot.hpp` (a
+  lock-free triple buffer) and `watch_snapshot.hpp`. Signal history comes
+  next, as the optional target `cannet::canopen-history`.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire
