@@ -67,13 +67,13 @@ what privileges they need. A plane never reaches upward.
   (dictionaries as OD files, one object per line, the form a firmware's
   table is imported in and an application compiles its dictionary from),
   all pure functions and constexpr data — and the transport the services
-  talk to: `transport.hpp`
-  (the interface: send, filtered subscriptions), `raw_transport.hpp` (over
-  `cannet::raw::async_socket`) and `loopback.hpp` (an in-memory bus for
-  tests); and over the transport the client: `client.hpp` (the host's own
-  node: NMT master, SYNC and heartbeat producer, the registry of remote
-  nodes), `remote_node.hpp` (one device: SDO client, heartbeat, EMCY, TPDO
-  and RPDO services) and `event.hpp` (how services report what happens);
+  talk to: `transport.hpp` (the interface: send, filtered subscriptions,
+  the bus's state), `raw_transport.hpp` (over `cannet::raw::async_socket`)
+  and `loopback.hpp` (an in-memory bus for tests); and over the transport
+  the client: `client.hpp` (the host's own node: NMT master, SYNC and
+  heartbeat producer, the registry of remote nodes), `remote_node.hpp`
+  (one device: SDO client, heartbeat, EMCY, TPDO and RPDO services) and
+  `event.hpp` (how services report what happens);
   and over SDO the services built on a node's dictionary, under `service/`:
   `watch.hpp` (polling the watch objects) and `config.hpp` (the parameters:
   read all, typed reads and writes, store and restore), reporting

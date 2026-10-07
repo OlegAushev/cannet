@@ -232,3 +232,53 @@ TEST_CASE("dump prints what goes on the bus until it is stopped", "[cli]")
   CHECK(*dumping == 0);
   CHECK(errors.str().empty());
 }
+
+TEST_CASE("dump shows the bus's status: its state, counts and counters",
+          "[cli]")
+{
+  CHECK(tool::describe(bus_status{.state = bus_state::error_passive,
+                                  .bus_errors = 12,
+                                  .overflows = 1,
+                                  .counters = {}})
+        == "bus            error_passive, bus errors 12, overflows 1");
+  CHECK(tool::describe(bus_status{
+            .state = bus_state::bus_off,
+            .bus_errors = 0,
+            .overflows = 0,
+            .counters = cannet::raw::error_counters{.tx = 248, .rx = 3}})
+        == "bus            bus_off, bus errors 0, overflows 0, "
+           "counters tx 248 rx 3");
+}
+
+TEST_CASE("dump prints every change of the bus's status, and a bus not as "
+          "it should be at once",
+          "[cli]")
+{
+  cli_fixture f;
+  loopback_transport monitor{f.bus};
+  monitor.set_status({.state = bus_state::down});
+  std::ostringstream dumped;
+  std::ostringstream errors;
+  boost::asio::cancellation_signal stop_dump;
+  auto const dumping = f.start(
+      tool::dump(monitor, {}, {.out = dumped, .err = errors}),
+      stop_dump);
+  REQUIRE(run_until(f.io, [&] { return !dumped.str().empty(); }));
+  monitor.set_status({.state = bus_state::error_active});
+  monitor.set_status({.state = bus_state::error_passive, .bus_errors = 2});
+
+  std::vector<std::string> lines;
+  std::istringstream in{dumped.str()};
+  for (std::string line; std::getline(in, line);) {
+    lines.push_back(line.substr(12)); // after the time
+  }
+  CHECK(lines
+        == std::vector<std::string>{
+            "bus            down, bus errors 0, overflows 0",
+            "bus            error_active, bus errors 0, overflows 0",
+            "bus            error_passive, bus errors 2, overflows 0"});
+
+  stop_dump.emit(boost::asio::cancellation_type::terminal);
+  REQUIRE(run_until(f.io, [&] { return dumping->has_value(); }));
+  CHECK(*dumping == 0);
+}

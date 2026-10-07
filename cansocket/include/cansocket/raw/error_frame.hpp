@@ -40,6 +40,8 @@ std::string_view name(controller_state s);
 struct error_counters {
   std::uint8_t tx = 0;
   std::uint8_t rx = 0;
+
+  bool operator==(error_counters const&) const = default;
 };
 
 // What one error frame reports.

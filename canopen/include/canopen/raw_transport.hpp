@@ -1,15 +1,22 @@
 #pragma once
 
 // cannet::canopen::raw_transport — the transport over a CAN_RAW socket
-// (cannet::raw::async_socket) on an already-up SocketCAN interface.
+// (cannet::raw::async_socket) on a SocketCAN interface.
 //
 // Protocol plane, unprivileged. It binds canopen's transport interface to
 // the transport plane, and lives here rather than in cansocket because a
 // plane never reaches upward. The socket's kernel filters follow the live
 // subscriptions, so the kernel drops frames nobody subscribed to; which
 // handler gets a frame is still decided by the subscriptions' own filters.
-// A failed receive (an interface going down, say) is retried after a pause,
-// so a transient fault does not end reception.
+//
+// It knows the bus's state (status(), on_status()): the controller's, from
+// the error frames its driver reports, and the interface's. An interface
+// that goes down is looked at every 250 ms until it is up again; one that
+// vanishes, as an adapter unplugged, is opened again by its name once it is
+// back, with the subscriptions. Any other failed receive is retried after a
+// pause, so a transient fault does not end reception. The kernel reports no
+// state a controller is already in, only its changes: until the first, a
+// controller of an interface that is up counts as error active.
 //
 // Thread model: as for every transport (transport.hpp) — every call on the
 // executor given at construction; handlers and completions run there.
@@ -30,21 +37,28 @@ public:
   raw_transport(raw_transport const&) = delete;
   raw_transport& operator=(raw_transport const&) = delete;
 
-  // Opens a CAN_RAW socket on an already-up interface and starts receiving.
-  // Reopening closes the previous socket first; subscriptions carry over.
+  // Opens a CAN_RAW socket on the interface `iface` and starts receiving:
+  // frames, and the error frames its controller reports. An interface that
+  // is down will do: the status says so until it is up. Reopening closes
+  // the previous socket first; subscriptions carry over, and the counts of
+  // the status start again.
   std::expected<void, raw::socket_error> open(std::string_view iface);
 
   // Stops receiving. Sends still queued, the one in flight included,
   // complete with transport_error::closed. Subscriptions stay, for the next
-  // open().
+  // open(); the status becomes no_interface.
   void close();
 
+  // Whether open() succeeded and close() has not been called since; the
+  // interface may be down or gone meanwhile (status()).
   bool is_open() const;
 
   executor_type get_executor() override;
   void send(can_frame const& frame, send_handler done) override;
   [[nodiscard]] subscription subscribe(can_filter filter,
                                        frame_handler on_frame) override;
+  bus_status status() const override;
+  [[nodiscard]] subscription on_status(status_handler on_status) override;
 
 private:
   struct state;

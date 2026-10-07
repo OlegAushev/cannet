@@ -8,7 +8,8 @@
 // Protocol plane, unprivileged, no I/O. For tests: protocol code, and the
 // per-device applications built on it, run against an emulated device on an
 // io_context, with no interface at all. fail_next_send() injects send
-// failures.
+// failures, set_status() the state of the bus as an endpoint's controller
+// would report it; until then, an endpoint's bus is error active.
 //
 // Thread model: as for every transport (transport.hpp). The bus and all its
 // endpoints share one executor; deliveries and completions run there.
@@ -57,9 +58,16 @@ public:
 
   [[nodiscard]] subscription subscribe(can_filter filter,
                                        frame_handler on_frame) override;
+  bus_status status() const override;
+  [[nodiscard]] subscription on_status(status_handler on_status) override;
 
   // The next send() completes with `error` and delivers nothing.
   void fail_next_send(transport_error error);
+
+  // Makes `status` this endpoint's: status() returns it, and the handlers
+  // of on_status() get it, at once, when it differs from the last. Sends
+  // go on as before; fail_next_send() fails them.
+  void set_status(bus_status status);
 
 private:
   std::shared_ptr<detail::loopback_bus_state> bus_;

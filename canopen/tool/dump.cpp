@@ -338,22 +338,44 @@ std::optional<std::string> describe(can_frame const& frame,
                      decoded(c, frame, options.dictionary));
 }
 
+std::string describe(bus_status const& status)
+{
+  auto text = std::format("bus  {:8}  {}, bus errors {}, overflows {}",
+                          "",
+                          name(status.state),
+                          status.bus_errors,
+                          status.overflows);
+  if (status.counters) {
+    text += std::format(", counters tx {} rx {}",
+                        status.counters->tx,
+                        status.counters->rx);
+  }
+  return text;
+}
+
 asio::awaitable<int> dump(transport& bus, dump_options options, console io)
 {
   co_await asio::this_coro::throw_if_cancelled(false);
   auto const start = std::chrono::steady_clock::now();
+  auto const print = [&](std::string const& line) {
+    std::chrono::duration<double> const time = std::chrono::steady_clock::now()
+                                             - start;
+    std::print(io.out, "{:10.6f}  {}\n", time.count(), line);
+    io.out.flush();
+  };
   auto const frames = bus.subscribe(
       {.can_id = 0, .can_mask = 0},
       [&](can_frame const& frame) {
-        auto const line = describe(frame, options);
-        if (!line) {
-          return;
+        if (auto const line = describe(frame, options)) {
+          print(*line);
         }
-        std::chrono::duration<double> const time =
-            std::chrono::steady_clock::now() - start;
-        std::print(io.out, "{:10.6f}  {}\n", time.count(), *line);
-        io.out.flush();
       });
+  auto const changes = bus.on_status(
+      [&](bus_status const& status) { print(describe(status)); });
+  // A bus that is not as it should be is told at once.
+  if (bus.status().state != bus_state::error_active) {
+    print(describe(bus.status()));
+  }
   // A stop cancels this wait: the coroutine suspends nowhere before it.
   asio::steady_timer until_stopped{bus.get_executor(),
                                    asio::steady_timer::time_point::max()};

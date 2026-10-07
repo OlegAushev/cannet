@@ -2,6 +2,8 @@
 
 #include "subscribers.hpp"
 
+#include <canopen/event.hpp>
+
 #include <boost/asio/post.hpp>
 
 #include <algorithm>
@@ -16,6 +18,8 @@ namespace detail {
 struct loopback_endpoint {
   detail::subscribers subscribers;
   std::optional<transport_error> fail_next;
+  bus_status status;
+  event<bus_status> changed;
 };
 
 struct loopback_bus_state {
@@ -105,6 +109,27 @@ subscription loopback_transport::subscribe(can_filter filter,
 void loopback_transport::fail_next_send(transport_error error)
 {
   endpoint_->fail_next = error;
+}
+
+bus_status loopback_transport::status() const
+{
+  return endpoint_->status;
+}
+
+subscription loopback_transport::on_status(status_handler on_status)
+{
+  return endpoint_->changed.subscribe(std::move(on_status));
+}
+
+void loopback_transport::set_status(bus_status status)
+{
+  if (status == endpoint_->status) {
+    return;
+  }
+  // Kept alive through a handler that destroys this transport.
+  auto const endpoint = endpoint_;
+  endpoint->status = status;
+  endpoint->changed.emit(endpoint->status);
 }
 
 } // namespace cannet::canopen

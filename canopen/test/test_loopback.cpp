@@ -309,9 +309,72 @@ TEST_CASE("every transport_error has a description and a name", "[transport]")
 {
   for (auto const e : {transport_error::closed,
                        transport_error::send_failed,
-                       transport_error::tx_queue_full}) {
+                       transport_error::tx_queue_full,
+                       transport_error::interface_down}) {
     CHECK(to_string(e) != "unknown error");
     CHECK(name(e) != "unknown");
   }
   CHECK(name(transport_error::tx_queue_full) == "tx_queue_full");
+}
+
+TEST_CASE("every bus_state has a description and a name", "[transport]")
+{
+  for (auto const s : {bus_state::error_active,
+                       bus_state::error_warning,
+                       bus_state::error_passive,
+                       bus_state::bus_off,
+                       bus_state::down,
+                       bus_state::no_interface}) {
+    CHECK(to_string(s) != "unknown state");
+    CHECK(name(s) != "unknown");
+  }
+  CHECK(name(bus_state::no_interface) == "no_interface");
+  CHECK(name(static_cast<bus_state>(0xFF)) == "unknown");
+}
+
+TEST_CASE("an endpoint's bus is error active until set_status()", "[loopback]")
+{
+  boost::asio::io_context io;
+  loopback_bus bus{io.get_executor()};
+  loopback_transport a{bus};
+  loopback_transport b{bus};
+  CHECK(a.status() == bus_status{});
+  CHECK(a.status().state == bus_state::error_active);
+
+  std::vector<bus_status> seen;
+  auto const changes = a.on_status(
+      [&seen](bus_status const& status) { seen.push_back(status); });
+  bus_status const passive{
+      .state = bus_state::error_passive,
+      .bus_errors = 3,
+      .overflows = 0,
+      .counters = cannet::raw::error_counters{.tx = 130, .rx = 0}};
+  a.set_status(passive);
+  a.set_status(passive); // no change: nobody is told
+  CHECK(a.status() == passive);
+  CHECK(seen == std::vector{passive});
+  // Each endpoint has its own controller.
+  CHECK(b.status() == bus_status{});
+
+  // A send goes on as before.
+  ids received;
+  auto const sub = b.subscribe(exactly(0x1), record_into(received));
+  a.send(frame_with_id(0x1), ignore);
+  io.run();
+  CHECK(received == ids{0x1});
+}
+
+TEST_CASE("an ended status subscription is told nothing", "[loopback]")
+{
+  boost::asio::io_context io;
+  loopback_bus bus{io.get_executor()};
+  loopback_transport a{bus};
+
+  int calls = 0;
+  {
+    auto const changes = a.on_status([&calls](bus_status const&) { ++calls; });
+    a.set_status({.state = bus_state::bus_off});
+  }
+  a.set_status({.state = bus_state::error_active});
+  CHECK(calls == 1);
 }

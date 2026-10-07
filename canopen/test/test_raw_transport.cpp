@@ -2,13 +2,17 @@
 #include <canopen/types.hpp>
 #include <cansocket/raw/socket.hpp>
 
+#include <linux/can/error.h>
+
 #include <cannet_test/vcan.hpp>
 
 #include <boost/asio/io_context.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -42,6 +46,19 @@ auto record_into(ids& received)
 
 void ignore(send_result) {}
 
+// An error frame as a controller's driver makes one; vcan has no
+// controller, but delivers an error frame a socket sends.
+can_frame error_frame(canid_t classes, std::array<std::uint8_t, 8> data = {})
+{
+  can_frame frame{};
+  frame.can_id = CAN_ERR_FLAG | classes;
+  frame.len = CAN_ERR_DLC;
+  for (std::size_t i = 0; i < data.size(); ++i) {
+    frame.data[i] = data[i];
+  }
+  return frame;
+}
+
 // Runs handlers until `done()` holds or `timeout` passes; a raw transport
 // always has a receive pending, so io_context::run() would never return.
 template<typename Predicate>
@@ -67,6 +84,7 @@ TEST_CASE("raw_transport reports a missing interface", "[raw_transport]")
   REQUIRE_FALSE(opened);
   CHECK(opened.error() == cannet::raw::socket_error::interface_not_found);
   CHECK_FALSE(t.is_open());
+  CHECK(t.status().state == bus_state::no_interface);
 }
 
 TEST_CASE("a send on a closed raw_transport completes with closed",
@@ -180,4 +198,86 @@ TEST_CASE("the kernel applies a COB-ID filter the same way",
     received.push_back(frame->can_id);
   }
   CHECK(received == ids{0x181});
+}
+
+TEST_CASE("a raw_transport is on no interface until it opens one and after "
+          "it closes",
+          "[raw_transport][vcan]")
+{
+  if (!cannet::test::vcan_up()) {
+    SKIP("vcan0 is not up");
+  }
+
+  boost::asio::io_context io;
+  raw_transport t{io.get_executor()};
+  CHECK(t.status().state == bus_state::no_interface);
+  std::vector<bus_state> seen;
+  auto const changes = t.on_status(
+      [&seen](bus_status const& status) { seen.push_back(status.state); });
+
+  REQUIRE(t.open(cannet::test::vcan_iface));
+  CHECK(t.is_open());
+  CHECK(t.status() == bus_status{});
+  t.close();
+  CHECK_FALSE(t.is_open());
+  CHECK(t.status().state == bus_state::no_interface);
+  CHECK(seen == std::vector{bus_state::error_active, bus_state::no_interface});
+}
+
+TEST_CASE("error frames make the bus's status and reach no subscription",
+          "[raw_transport][vcan]")
+{
+  if (!cannet::test::vcan_up()) {
+    SKIP("vcan0 is not up");
+  }
+
+  boost::asio::io_context io;
+  raw_transport t{io.get_executor()};
+  REQUIRE(t.open(cannet::test::vcan_iface));
+  cannet::raw::socket controller;
+  REQUIRE(controller.open(cannet::test::vcan_iface));
+
+  // Every frame, were error frames frames.
+  ids received;
+  auto const sub = t.subscribe({.can_id = 0, .can_mask = 0},
+                               record_into(received));
+  std::vector<bus_status> seen;
+  auto const changes = t.on_status(
+      [&seen](bus_status const& status) { seen.push_back(status); });
+
+  REQUIRE(controller.send(
+      error_frame(CAN_ERR_CRTL | CAN_ERR_CNT,
+                  {0, CAN_ERR_CRTL_TX_PASSIVE, 0, 0, 0, 0, 130, 4})));
+  REQUIRE(controller.send(error_frame(CAN_ERR_PROT | CAN_ERR_ACK,
+                                      {0, 0, 0, CAN_ERR_PROT_LOC_ACK})));
+  REQUIRE(controller.send(error_frame(CAN_ERR_BUSOFF)));
+  REQUIRE(controller.send(
+      error_frame(CAN_ERR_CRTL, {0, CAN_ERR_CRTL_RX_OVERFLOW})));
+  // Lost arbitration is counted nowhere.
+  REQUIRE(controller.send(error_frame(CAN_ERR_LOSTARB)));
+  REQUIRE(controller.send(error_frame(CAN_ERR_RESTARTED)));
+  REQUIRE(controller.send(frame_with_id(0x123)));
+  REQUIRE(run_until(io, [&] { return !received.empty(); }));
+
+  using counters = cannet::raw::error_counters;
+  bus_status const passive{.state = bus_state::error_passive,
+                           .bus_errors = 0,
+                           .overflows = 0,
+                           .counters = counters{.tx = 130, .rx = 4}};
+  auto with_error = passive;
+  with_error.bus_errors = 1;
+  auto off = with_error;
+  off.state = bus_state::bus_off;
+  auto overflowed = off;
+  overflowed.overflows = 1;
+  auto restarted = overflowed;
+  restarted.state = bus_state::error_active;
+  CHECK(seen == std::vector{passive, with_error, off, overflowed, restarted});
+  CHECK(t.status() == restarted);
+  // The error frames reached no subscription.
+  CHECK(received == ids{0x123});
+
+  // A new open() counts afresh.
+  REQUIRE(t.open(cannet::test::vcan_iface));
+  CHECK(t.status() == bus_status{});
 }

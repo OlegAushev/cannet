@@ -80,8 +80,13 @@ struct dump_options {
 std::optional<std::string> describe(can_frame const& frame,
                                     dump_options const& options);
 
-// dump: prints every frame on the bus, decoded, with the time since the
-// start, until stopped. Sends nothing.
+// What dump prints of the bus's status, after its time, when it changes:
+// "bus            error_passive, bus errors 12, overflows 0".
+std::string describe(bus_status const& status);
+
+// dump: prints every frame on the bus, decoded, and every change of the
+// bus's status, with the time since the start, until stopped. Sends
+// nothing.
 boost::asio::awaitable<int> dump(transport& bus,
                                  dump_options options,
                                  console io);

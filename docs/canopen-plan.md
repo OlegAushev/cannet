@@ -169,30 +169,51 @@ dependency is the Boost headers:
     // Delivers matching frames until the subscription ends.
     [[nodiscard]] virtual subscription subscribe(can_filter filter,
                                                  frame_handler on_frame) = 0;
+    // The bus now, and after every change of it.
+    virtual bus_status status() const = 0;
+    [[nodiscard]] virtual subscription on_status(status_handler) = 0;
   };
   ```
 
   A subscription carries its filter and ends when destroyed, so a node-id
   change simply replaces subscriptions; handlers may subscribe and
   unsubscribe while frames are dispatched. Send failures come as
-  `transport_error` (`closed`, `send_failed`, `tx_queue_full`). A full TX
-  queue goes back to the caller and is not retried: SYNC and heartbeat drop
-  the frame, the SDO client decides for itself.
+  `transport_error` (`closed`, `send_failed`, `tx_queue_full`,
+  `interface_down`). A full TX queue goes back to the caller and is not
+  retried: SYNC and heartbeat drop the frame, the SDO client decides for
+  itself.
+- The bus's state is the transport's to know (stage 6: a GUI in a browser
+  sees the bus only through its daemon). `bus_status` holds the state —
+  the controller's state of CAN fault confinement, `error_active` to
+  `bus_off`, or the interface's, `down` or `no_interface` — the counts of
+  errors on the wire and of overflows the controller reported since the
+  transport opened, and its error counters when it reports them;
+  `on_status()` delivers it after every change. Error frames reach no
+  subscription of `subscribe()`, which takes data frames only.
 - `raw_transport` binds the interface to `cannet::raw::async_socket`. It lives
   in canopen, since a plane never reaches upward. The socket's kernel filters
-  follow the live subscriptions; a failed receive is retried after a pause;
-  `close()` completes queued sends with `closed` and keeps the subscriptions
-  for the next `open()`.
+  follow the live subscriptions; `close()` completes queued sends with
+  `closed` and keeps the subscriptions for the next `open()`. The status
+  comes from the controller's error frames (`CAN_RAW_ERR_FILTER`, decoded
+  by cansocket's `error_frame.hpp`) and from the socket's errors: the
+  kernel reports a downed interface to a bound socket once, as `ENETDOWN`,
+  and a vanished one, an adapter unplugged, as `ENODEV`, which unbinds the
+  socket for good. A downed interface is looked at every 250 ms until it is
+  up; a vanished one is opened again by its name once it is back, with the
+  subscriptions, where reception used to die silently. Any other failed
+  receive is retried after a pause. The kernel tells no state a controller
+  is already in, only its changes: until the first, a controller of an
+  interface that is up counts as error active. A state read over netlink
+  would tell it, but vcan has none, and canup is the plane that reads it.
 - `loopback_bus` and `loopback_transport` are an in-memory bus: a frame from
   one endpoint reaches the subscribers of the others, as between sockets on
-  vcan, and `fail_next_send()` injects failures. They are public, so device
-  applications can test their own logic without an interface.
+  vcan, `fail_next_send()` injects failures and `set_status()` an endpoint's
+  bus status. They are public, so device applications can test their own
+  logic without an interface.
 - Everything of one client runs on the transport's executor, which is a
   strand when the `io_context` has several threads. Periodic work (SYNC,
   heartbeat, RPDOs, watch polling) runs on a `steady_timer` per producer;
   there is no `_run` loop polling futures.
-- Bus error frames (`CAN_RAW_ERR_FILTER`) and interface state are not in the
-  transport yet; see [Open questions](#open-questions).
 
 ## Client and remote nodes (stage 2, done)
 
@@ -683,7 +704,7 @@ and when, the pages of its own. The layer of its web GUI that knows no
 device — the JSON of the dictionary, values and errors, the RPC over SDO,
 NMT, config and watch, the sessions and their checks below — is a
 directory and a target of its own inside the pilot, written to move into
-cannet whole (open question 2). Its tests run, as cannet's do, against the
+cannet whole (open question 1). Its tests run, as cannet's do, against the
 emulated device on the loopback bus, which cannet exports for the purpose
 as the header-only `cannet::canopen-testing`.
 
@@ -794,15 +815,12 @@ table and uPlot with a few signals — is measured there first, on a Pi 4 or
 | 2026-10-07 | The page is TypeScript with Vue 3 (the Composition API), built with Vite; plots with uPlot; no UI kit and no state library at first |
 | 2026-10-07 | A device's applications are `<device>-workbench`, the engineer's — configuration, tests, research — and `<device>-panel`, an operator's; the pilot is `adpt-etk-inverter-workbench` |
 | 2026-10-07 | The emulated device, the bus log and `run_until` are public, as the header-only `cannet::canopen-testing`, for a device application's tests as well as cannet's |
+| 2026-10-07 | The bus's state reaches the protocol plane through the transport: `status()` and `on_status()` give a `bus_status` — the controller's state of fault confinement or the interface's, counts of errors on the wire and of overflows, the error counters — after every change; error frames reach no frame subscription. Closes the open question of bus error frames and interface state |
+| 2026-10-07 | `raw_transport` makes the status from error frames and the socket's errors: it looks at a downed interface every 250 ms, opens a vanished one again by its name, and fails a send on either with `transport_error::interface_down`; until a controller reports a change, an interface that is up counts as error active |
 
 ## Open questions
 
-1. **Bus error frames and interface state**: how they surface through
-   `transport`. Today a failed receive is retried silently after a pause. No
-   longer optional: a GUI in a browser sees the bus only through its daemon,
-   so bus-off, error-passive and a downed interface must reach it as events.
-   Needed by stage 6, whose GUI is a web page.
-2. **A web layer in cannet**: the JSON mapping of the dictionary, values and
+1. **A web layer in cannet**: the JSON mapping of the dictionary, values and
    errors and the RPC over SDO, NMT, config and watch are not device-specific.
    By the argument that put history in cannet, they are a candidate for an
    optional target over Boost.Beast and Boost.JSON. The pilot keeps them
