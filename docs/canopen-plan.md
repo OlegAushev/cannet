@@ -659,14 +659,17 @@ checked against the device in stage 5. Flatpak is not needed for now.
 Interface bring-up stays outside the application: systemd-networkd on a
 Raspberry Pi, `canup` interactively on a PC.
 
-The pilot is a repository of its own, as every device application is: it
-embeds cannet and compiles in the dictionary made from its firmware's
-`od.cpp` with `cannet_canopen_dictionary()`. What is the device's stays
-there: its dictionary, the decoding of its TPDOs, the policy of what may be
-written and when, the pages of its own. The layer of its web GUI that
-knows no device — the JSON of the dictionary, values and errors, the RPC
-over SDO, NMT, config and watch, the sessions and their checks below — is
-a directory and a target of its own inside the pilot, written to move into
+The pilot is a repository of its own, as every device application is. A
+device's applications are named after it: `<device>-workbench`, the
+engineer's — configuration, tests and research — and `<device>-panel`, an
+operator's; the pilot is `adpt-etk-inverter-workbench`. It embeds cannet
+and compiles in the dictionary made from its firmware's `od.cpp` with
+`cannet_canopen_dictionary()`. What is the device's stays there: its
+dictionary, the decoding of its TPDOs, the policy of what may be written
+and when, the pages of its own. The layer of its web GUI that knows no
+device — the JSON of the dictionary, values and errors, the RPC over SDO,
+NMT, config and watch, the sessions and their checks below — is a
+directory and a target of its own inside the pilot, written to move into
 cannet whole (open question 2).
 
 The GUI is a page in a browser, which turns the application into a daemon:
@@ -773,6 +776,7 @@ table and uPlot with a few signals — is measured there first, on a Pi 4 or
 | 2026-10-07 | The pilot application is a repository of its own over cannet. If its GUI is a web page, the layer that knows no device is a directory and target of its own inside it, to move into cannet after the pilot; where the TypeScript page goes is decided then |
 | 2026-10-07 | The pilot is the ADPT-ETK Inverter, and its GUI a web page served by a daemon over cannet and Beast; Flatpak is not needed for now |
 | 2026-10-07 | The page is TypeScript with Vue 3 (the Composition API), built with Vite; plots with uPlot; no UI kit and no state library at first |
+| 2026-10-07 | A device's applications are `<device>-workbench`, the engineer's — configuration, tests, research — and `<device>-panel`, an operator's; the pilot is `adpt-etk-inverter-workbench` |
 
 ## Open questions
 
