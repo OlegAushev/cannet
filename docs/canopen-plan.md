@@ -3,7 +3,9 @@
 Status: in progress — stages 1 (`cd2712d`), 0, 2, 3, 4 and 5 done; stage 6,
 the pilot application for the ADPT-ETK Inverter with a web GUI, under way:
 its first two milestones, a prototype that reads the inverter and writes
-its parameters, then plots, CSV and the bus's state, done.
+its parameters, then plots, CSV and the bus's state, done; the third, the
+inverter driven through its PDOs, checked on vcan, its check on the live
+inverter to come.
 Last updated: 2026-10-07.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -94,7 +96,7 @@ target.
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | done |
-| 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | in progress: `adpt-etk-inverter-workbench`, milestones 1 and 2 of 3 done |
+| 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | in progress: `adpt-etk-inverter-workbench`, milestones 1 and 2 of 3 done, the third checked on vcan |
 
 Stage 1 went first: the data layer needs no Asio. The transport interface and
 the loopback bus, first planned for stage 1, moved to stage 0 because the
@@ -311,8 +313,9 @@ private periodic sender, NMT through `async_nmt()`.
   (`tpdo_config`): a provider, called right before each send, and a period.
   Each RPDO and the node as a whole can be disabled; a disabled RPDO keeps its
   setup and its provider rests. RPDOs go out whether or not the node is alive:
-  the adpt-etk-inverter firmware times out RPDO1 after 300 ms and latches a
-  critical fault after 1 s without it. An interlock such as h2-hess's, which
+  the adpt-etk-inverter firmware counts its VCU lost, a critical trouble that
+  stops the drive, once RPDO1 has not come for 300 ms or RPDO2 for a second,
+  and only while they stay away. An interlock such as h2-hess's, which
   silences an RPDO while another master is heard, is the application's: it
   subscribes to that master's heartbeat and disables the RPDO.
 - **Node ids.** A node id change runs on the client's executor, moves every
@@ -706,7 +709,12 @@ and when, the pages of its own. The layer of its web GUI that knows no
 device — the JSON of the dictionary, values and errors, the RPC over SDO,
 NMT, config and watch, the sessions and their checks below — is a
 directory and a target of its own inside the pilot, written to move into
-cannet whole (open question 1). Its tests run, as cannet's do, against the
+cannet whole (open question 1). A device application adds messages and
+requests of its own to the sessions through an extension, and its policy
+sees which page asks and says why it refuses: the pilot's inverter part,
+its drive from the TPDOs and its control through RPDOs from one page at a
+time, lives in the pilot's `inverter/` and `daemon/`, behind that
+boundary. Its tests run, as cannet's do, against the
 emulated device on the loopback bus, which cannet exports for the purpose
 as the header-only `cannet::canopen-testing`.
 
@@ -819,6 +827,7 @@ table and uPlot with a few signals — is measured there first, on a Pi 4 or
 | 2026-10-07 | The emulated device, the bus log and `run_until` are public, as the header-only `cannet::canopen-testing`, for a device application's tests as well as cannet's |
 | 2026-10-07 | The bus's state reaches the protocol plane through the transport: `status()` and `on_status()` give a `bus_status` — the controller's state of fault confinement or the interface's, counts of errors on the wire and of overflows, the error counters — after every change; error frames reach no frame subscription. Closes the open question of bus error frames and interface state |
 | 2026-10-07 | `raw_transport` makes the status from error frames and the socket's errors: it looks at a downed interface every 250 ms, opens a vanished one again by its name, and fails a send on either with `transport_error::interface_down`; until a controller reports a change, an interface that is up counts as error active |
+| 2026-10-07 | The pilot's web layer takes a device application's own messages and requests through an extension, and its policy is told which page asks and what the write does and says why it refuses; the inverter's TPDO decoding and RPDO control stay in the pilot, outside that layer and outside cannet |
 
 ## Open questions
 
