@@ -2,8 +2,8 @@
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2, 3, 4 and 5 done; stage 6,
 the pilot application for the ADPT-ETK Inverter with a web GUI, under way:
-its first milestone, a prototype that reads the inverter and writes its
-parameters, done.
+its first two milestones, a prototype that reads the inverter and writes
+its parameters, then plots, CSV and the bus's state, done.
 Last updated: 2026-10-07.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -94,7 +94,7 @@ target.
 | 3 | `sdo_client` on completion tokens: queue, timeout, cancellation, strings, restore default | SDO read/write/exec against a live device over vcan or a real bus; cancellation mid-request and mid-string against an emulated device on the loopback bus | done |
 | 4 | `service::{watch, config}` with value events, a snapshot adapter for a GUI on its own thread, `cannet::canopen-history` | watch polling behaves when the device disappears | done |
 | 5 | CLI `canopen`: dump, sdo read/write/exec, watch, nmt, od-verify | the acceptance scenario, entirely from a terminal | done |
-| 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | in progress: `adpt-etk-inverter-workbench`, milestone 1 of 3 done |
+| 6 | A pilot per-device application on top of cannet | one device moved off ucan-monitor | in progress: `adpt-etk-inverter-workbench`, milestones 1 and 2 of 3 done |
 
 Stage 1 went first: the data layer needs no Asio. The transport interface and
 the loopback bus, first planned for stage 1, moved to stage 0 because the
