@@ -150,6 +150,9 @@ struct raw_transport::state : std::enable_shared_from_this<state> {
     if (report.counters) {
       next.counters = report.counters;
     }
+    else if (report.restarted) {
+      next.counters.reset(); // a restart zeroes them, unreported
+    }
     update(next);
   }
 
@@ -177,7 +180,14 @@ struct raw_transport::state : std::enable_shared_from_this<state> {
   // is back.
   void enter(bus_state s)
   {
-    set_state(s);
+    auto next = status;
+    next.state = s;
+    // An interface back up has a controller started afresh: the counters
+    // the old one reported are stale.
+    if (absent(status.state) && !absent(s)) {
+      next.counters.reset();
+    }
+    update(next);
     if (absent(s)) {
       arm_check();
     }

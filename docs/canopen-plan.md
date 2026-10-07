@@ -203,7 +203,9 @@ dependency is the Boost headers:
   subscriptions, where reception used to die silently. Any other failed
   receive is retried after a pause. The kernel tells no state a controller
   is already in, only its changes: until the first, a controller of an
-  interface that is up counts as error active. A state read over netlink
+  interface that is up counts as error active. A controller that restarts,
+  after a bus-off or with its interface, has zeroed its error counters:
+  the status has none until it reports them again. A state read over netlink
   would tell it, but vcan has none, and canup is the plane that reads it.
 - `loopback_bus` and `loopback_transport` are an in-memory bus: a frame from
   one endpoint reaches the subscribers of the others, as between sockets on

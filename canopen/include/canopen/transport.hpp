@@ -75,7 +75,8 @@ struct bus_status {
   std::uint64_t bus_errors = 0;
   // Reports of frames lost to a full buffer of the controller.
   std::uint64_t overflows = 0;
-  // The error counters as the controller last reported them, if it does.
+  // The error counters as the controller last reported them, if it does;
+  // none since it restarted, after a bus-off or with its interface.
   std::optional<raw::error_counters> counters{};
 
   bool operator==(bus_status const&) const = default;

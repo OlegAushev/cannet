@@ -270,8 +270,11 @@ TEST_CASE("error frames make the bus's status and reach no subscription",
   off.state = bus_state::bus_off;
   auto overflowed = off;
   overflowed.overflows = 1;
+  // A restart zeroes the counters, which the controller has not reported
+  // since.
   auto restarted = overflowed;
   restarted.state = bus_state::error_active;
+  restarted.counters.reset();
   CHECK(seen == std::vector{passive, with_error, off, overflowed, restarted});
   CHECK(t.status() == restarted);
   // The error frames reached no subscription.
