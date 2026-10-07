@@ -56,6 +56,7 @@ struct watch::state : std::enable_shared_from_this<state> {
       : sdo(&client),
         objects(watch_objects(dictionary)),
         polled(objects.size(), true),
+        missing(objects.size(), false),
         timer(client.get_executor())
   {
   }
@@ -63,6 +64,7 @@ struct watch::state : std::enable_shared_from_this<state> {
   detail::sdo_client* sdo; // null once the client is gone
   std::vector<od_entry const*> objects;
   std::vector<bool> polled;
+  std::vector<bool> missing; // the device answered object_not_found
   std::chrono::milliseconds period{0};
   bool enabled = true;
   bool running = false;                // the polling coroutine is alive
@@ -128,7 +130,7 @@ struct watch::state : std::enable_shared_from_this<state> {
   asio::awaitable<void> pass()
   {
     for (std::size_t i = 0; i < objects.size() && active(); ++i) {
-      if (!polled[i]) {
+      if (!polled[i] || missing[i]) {
         continue;
       }
       auto const* entry = objects[i];
@@ -144,6 +146,9 @@ struct watch::state : std::enable_shared_from_this<state> {
       if (failure == sdo_error::kind::cancelled) {
         continue; // cut short by a change of the node's id
       }
+      // Before the event: a handler may enable the object again.
+      missing[i] = failure == sdo_error::kind::aborted
+                && value.error().abort == sdo_abort_code::object_not_found;
       values.emit({.entry = entry,
                    .value = std::move(value),
                    .time = clock_type::now()});
@@ -204,6 +209,7 @@ std::expected<void, setup_error> watch::enable(od_key key)
     return std::unexpected(setup_error::no_such_object);
   }
   state_->polled[*i] = true;
+  state_->missing[*i] = false;
   return {};
 }
 
@@ -223,9 +229,20 @@ bool watch::enabled(od_key key) const
   return i && state_->polled[*i];
 }
 
+bool watch::missing(od_key key) const
+{
+  auto const i = state_->find(key);
+  return i && state_->missing[*i];
+}
+
 subscription watch::on_value(value_handler handler)
 {
   return state_->values.subscribe(std::move(handler));
+}
+
+void watch::rebind()
+{
+  state_->missing.assign(state_->missing.size(), false);
 }
 
 void watch::close()

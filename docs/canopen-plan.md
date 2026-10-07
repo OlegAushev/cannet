@@ -437,6 +437,16 @@ precision the GUI's to choose, and a web daemon sends numbers;
   The first answer after the device returns is reported as usual. A request
   the transport cannot send ends the pass until the next period: the other
   objects would fail as well, and the watch does not spin.
+
+  An object the device answers `object_not_found` for is reported once and
+  polled no more (`missing()`): the device lacks it and will not grow it
+  while it runs. A firmware's table may hold objects that one board has and
+  another does not, as the ADPT-ETK Inverter's holds a sensor per channel
+  and answers `object_not_found` for the channels its board lacks, which an
+  OD file made from the table cannot tell. Enabling the object again polls
+  it again, as after a firmware update, and a node id change forgets what
+  the last device lacked. Any other abort is the device's state of the
+  moment, and the object stays polled.
 - A GUI on a thread of its own reads state through `snapshot<T>` (done), a
   triple buffer: the writer, on the client's executor, fills a buffer of its
   own and swaps it for the one in the middle, and the reader swaps its
@@ -776,6 +786,7 @@ table and uPlot with a few signals — is measured there first, on a Pi 4 or
 | 2026-10-06 | The CLI's bus commands are coroutines over a transport, tested against the emulated device on the loopback bus; the CLI's own node never starts, so it sends no heartbeat, SYNC or RPDO |
 | 2026-10-06 | Ctrl+C stops a CLI command between its requests: the one in flight finishes, a string read to its NUL |
 | 2026-10-06 | `od-verify` only reads: it checks the file's objects against the device, not the device's against the file, and not whether an object takes a write |
+| 2026-10-07 | The watch stops polling an object the device answers `object_not_found` for, after reporting it once; `enable()` and a node id change take it back |
 | 2026-10-07 | The pilot application is a repository of its own over cannet. If its GUI is a web page, the layer that knows no device is a directory and target of its own inside it, to move into cannet after the pilot; where the TypeScript page goes is decided then |
 | 2026-10-07 | The pilot is the ADPT-ETK Inverter, and its GUI a web page served by a daemon over cannet and Beast; Flatpak is not needed for now |
 | 2026-10-07 | The page is TypeScript with Vue 3 (the Composition API), built with Vite; plots with uPlot; no UI kit and no state library at first |

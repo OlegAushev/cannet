@@ -61,15 +61,20 @@ constexpr auto drive_dictionary = dictionary{
        od_access::rw,
        od_value_type::uint16}}}};
 
-void add_objects(emulated_device& device, float vdc = 540.0f)
+// The device's objects; one board has no Vdc.
+void add_objects(emulated_device& device,
+                 float vdc = 540.0f,
+                 bool has_vdc = true)
 {
   using enum od_value_type;
   device.add_object(
       uptime_key,
       {.type = float32, .access = od_access::ro, .value = to_raw(12.5f)});
-  device.add_object(
-      vdc_key,
-      {.type = float32, .access = od_access::ro, .value = to_raw(vdc)});
+  if (has_vdc) {
+    device.add_object(
+        vdc_key,
+        {.type = float32, .access = od_access::ro, .value = to_raw(vdc)});
+  }
   device.add_object(state_key,
                     {.type = uint16,
                      .access = od_access::ro,
@@ -87,9 +92,9 @@ void add_objects(emulated_device& device, float vdc = 540.0f)
 // the emulated device behind it on the loopback bus, and every reading of
 // the node's watch.
 struct fixture {
-  fixture()
+  explicit fixture(bool has_vdc = true)
   {
-    add_objects(device);
+    add_objects(device, 540.0f, has_vdc);
   }
 
   void run(std::chrono::milliseconds duration = 20ms)
@@ -361,6 +366,66 @@ TEST_CASE("a node id change drops the read in flight, and the watch goes on "
   CHECK(other.sdo_requests() == std::vector<od_key>{vdc_key, state_key});
   REQUIRE(keys_of(f.readings) == std::vector<od_key>{vdc_key, state_key});
   CHECK(f.readings[0].value == od_value{230.0f});
+}
+
+TEST_CASE("an object the device lacks is polled no more, until enabled again",
+          "[watch]")
+{
+  fixture f{false};
+  auto& watch = f.node->watch;
+  watch.set_period(10ms);
+  // A pass of three readings, then passes of two.
+  REQUIRE(f.run_until([&f] { return f.readings.size() == 7; }));
+  CHECK(std::ranges::count(f.device.sdo_requests(), vdc_key) == 1);
+  auto const lacking = std::ranges::find(
+      f.readings,
+      vdc_key,
+      [](object_reading const& r) { return r.entry->key; });
+  REQUIRE(lacking != f.readings.end());
+  CHECK(lacking->value.error()
+        == sdo_error{.reason = sdo_error::kind::aborted,
+                     .abort = sdo_abort_code::object_not_found});
+  CHECK(watch.missing(vdc_key));
+  CHECK(watch.enabled(vdc_key)); // still the caller's choice
+  CHECK_FALSE(watch.missing(uptime_key));
+
+  // A firmware update may have added it.
+  REQUIRE(watch.enable(vdc_key));
+  CHECK_FALSE(watch.missing(vdc_key));
+  REQUIRE(f.run_until([&f] {
+    return std::ranges::count(f.device.sdo_requests(), vdc_key) == 2;
+  }));
+  REQUIRE(f.run_until([&watch] { return watch.missing(vdc_key); }));
+}
+
+TEST_CASE("an object refused for another reason is still polled", "[watch]")
+{
+  fixture f;
+  // The device has it write-only, as the dictionary does not.
+  f.device.add_object(
+      vdc_key,
+      {.type = od_value_type::float32, .access = od_access::wo});
+  f.node->watch.set_period(10ms);
+  REQUIRE(f.run_until([&f] {
+    return std::ranges::count(f.device.sdo_requests(), vdc_key) == 3;
+  }));
+  CHECK_FALSE(f.node->watch.missing(vdc_key));
+}
+
+TEST_CASE("a node id change forgets what the last device lacked", "[watch]")
+{
+  fixture f{false};
+  loopback_transport other_bus{f.bus};
+  emulated_device other{other_bus, node_id::literal(2), 0ms};
+  add_objects(other, 230.0f);
+
+  f.node->watch.set_period(10ms);
+  REQUIRE(f.run_until([&f] { return f.node->watch.missing(vdc_key); }));
+  REQUIRE(f.host.set_remote_node_id("drive", node_id::literal(2)));
+  CHECK_FALSE(f.node->watch.missing(vdc_key));
+  REQUIRE(f.run_until([&other] {
+    return std::ranges::contains(other.sdo_requests(), vdc_key);
+  }));
 }
 
 TEST_CASE("the watch stops for good when its client goes", "[watch]")

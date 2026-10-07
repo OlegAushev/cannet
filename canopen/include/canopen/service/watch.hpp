@@ -11,7 +11,9 @@
 // A device that stops answering costs one request per SDO timeout, each
 // reported as a timeout; another request for the node waits behind at most
 // one of the watch's. A request the transport cannot send ends the pass:
-// the other objects would fail as well.
+// the other objects would fail as well. An object the device answers
+// object_not_found for is polled no more: the device lacks it, as one board
+// has fewer sensors than another, and will not grow it while it runs.
 //
 // Protocol plane, unprivileged.
 //
@@ -64,19 +66,28 @@ public:
   bool enabled() const;
 
   // Whether one object is polled; every object is by default. Fail with
-  // no_such_object for a key objects() does not hold.
+  // no_such_object for a key objects() does not hold. Enabling an object
+  // the device lacked polls it again, as after a firmware update.
   std::expected<void, setup_error> enable(od_key key);
   std::expected<void, setup_error> disable(od_key key);
   bool enabled(od_key key) const;
 
+  // Whether the device answered that it has no such object, which the
+  // watch then polls no more, enabled or not. A change of the node's id
+  // forgets it.
+  bool missing(od_key key) const;
+
   // Calls `handler` with every reading: a value, or why there is none — a
   // timeout, an abort, a request the transport could not send. A read cut
-  // short by disable() or by a change of the node's id is not reported.
+  // short by disable() or by a change of the node's id is not reported; an
+  // object the device lacks is reported once, with its object_not_found.
   [[nodiscard]] subscription on_value(value_handler handler);
 
 private:
   friend class cannet::canopen::remote_node;
 
+  // The node is another device now: forget what the last one lacked.
+  void rebind();
   // The client is gone: polling stops for good.
   void close();
 

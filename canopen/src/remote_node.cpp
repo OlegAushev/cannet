@@ -45,6 +45,7 @@ void remote_node::set_id(node_id id)
   emcy.rebind(id);
   tpdo.rebind(id);
   rpdo.rebind(id);
+  watch.rebind();
   // Every service has moved before any handler runs.
   heartbeat.notify_rebound();
   tpdo.notify_rebound();
