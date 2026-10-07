@@ -4,6 +4,10 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <optional>
 #include <system_error>
 #include <type_traits>
 
@@ -104,6 +108,21 @@ std::expected<od_value, parse_error> parse_float(std::string_view text)
   return od_value{value};
 }
 
+std::optional<std::uint16_t> parse_hex(std::string_view text,
+                                       std::size_t max_digits)
+{
+  if (text.empty() || text.size() > max_digits) {
+    return std::nullopt;
+  }
+  std::uint16_t value = 0;
+  auto const end = text.data() + text.size();
+  auto const [ptr, ec] = std::from_chars(text.data(), end, value, 16);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
+
 std::string format_float(float value, int precision)
 {
   // Below 0.01 fixed notation of a few digits shows nothing useful.
@@ -184,6 +203,25 @@ std::expected<od_value, parse_error> parse(std::string_view text,
     return std::unexpected(parse_error::unsupported_type);
   }
   return std::unexpected(parse_error::unsupported_type);
+}
+
+std::string to_string(od_key key)
+{
+  return std::format("{:04X}:{:02X}", key.index, key.subindex);
+}
+
+std::optional<od_key> parse_key(std::string_view text)
+{
+  auto const colon = text.find(':');
+  if (colon == std::string_view::npos) {
+    return std::nullopt;
+  }
+  auto const index = parse_hex(text.substr(0, colon), 4);
+  auto const subindex = parse_hex(text.substr(colon + 1), 2);
+  if (!index || !subindex) {
+    return std::nullopt;
+  }
+  return od_key{*index, static_cast<std::uint8_t>(*subindex)};
 }
 
 std::string_view to_string(od_value_type type)

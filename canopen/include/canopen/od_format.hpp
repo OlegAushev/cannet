@@ -10,6 +10,7 @@
 #include <canopen/od.hpp>
 
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -39,6 +40,14 @@ std::string to_string(od_value value, int precision = 6);
 // uint32 (the write is the command, the value is ignored by most devices).
 std::expected<od_value, parse_error> parse(std::string_view text,
                                            od_value_type type);
+
+// A key as an OD file, the CLI and a web page write it: index:subindex in
+// hex, four digits and two, "5000:01".
+std::string to_string(od_key key);
+
+// Reads a key written as index:subindex in hex, up to four digits and two:
+// "5000:01", "5000:1"; nullopt for anything else.
+std::optional<od_key> parse_key(std::string_view text);
 
 // The short names a UI or CLI shows for a type ("bool", "uint16") and an
 // access ("rw", "const").

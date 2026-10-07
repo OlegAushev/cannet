@@ -3,7 +3,6 @@
 #include <canopen/od_format.hpp>
 
 #include <algorithm>
-#include <charconv>
 #include <format>
 #include <optional>
 #include <ranges>
@@ -101,35 +100,6 @@ bool holdable(std::string_view field)
   return std::ranges::none_of(field, [](char c) {
     return blank(c) || c == '"' || c == '\\' || c == '\n' || c == '\r';
   });
-}
-
-std::optional<std::uint16_t> parse_hex(std::string_view text,
-                                       std::size_t max_digits)
-{
-  if (text.empty() || text.size() > max_digits) {
-    return std::nullopt;
-  }
-  std::uint16_t value = 0;
-  auto const end = text.data() + text.size();
-  auto const [ptr, ec] = std::from_chars(text.data(), end, value, 16);
-  if (ec != std::errc{} || ptr != end) {
-    return std::nullopt;
-  }
-  return value;
-}
-
-std::optional<od_key> parse_key(std::string_view text)
-{
-  auto const colon = text.find(':');
-  if (colon == std::string_view::npos) {
-    return std::nullopt;
-  }
-  auto const index = parse_hex(text.substr(0, colon), 4);
-  auto const subindex = parse_hex(text.substr(colon + 1), 2);
-  if (!index || !subindex) {
-    return std::nullopt;
-  }
-  return od_key{*index, static_cast<std::uint8_t>(*subindex)};
 }
 
 std::optional<od_access> parse_access(std::string_view text)
@@ -347,7 +317,7 @@ std::expected<std::string, od_file_error> to_od_file(dictionary_view dictionary)
         || !holdable(unit)) {
       return fail(kind::bad_field, line);
     }
-    out += std::format("{:04X}:{:02X}  ", e.key.index, e.key.subindex);
+    out += std::format("{}  ", to_string(e.key));
     append_column(out, o.category, category_width);
     append_column(out, o.subcategory, subcategory_width);
     append_column(out, o.name, name_width);

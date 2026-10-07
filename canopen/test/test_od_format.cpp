@@ -81,6 +81,30 @@ TEST_CASE("exec takes a uint32, string takes nothing", "[od_format]")
         == parse_error::unsupported_type);
 }
 
+TEST_CASE("a key goes as index:subindex in hex", "[od_format]")
+{
+  CHECK(to_string(od_key{0x5000, 0x01}) == "5000:01");
+  CHECK(to_string(od_key{0x001A, 0xF2}) == "001A:F2");
+
+  CHECK(parse_key("5000:01") == od_key{0x5000, 0x01});
+  CHECK(parse_key("5000:1") == od_key{0x5000, 0x01});
+  CHECK(parse_key("1a:f2") == od_key{0x001A, 0xF2});
+  CHECK(parse_key(to_string(od_key{0xFFFF, 0xFF})) == od_key{0xFFFF, 0xFF});
+  for (auto const* text : {"",
+                           "5000",
+                           "5000:",
+                           ":01",
+                           "10000:01",
+                           "5000:100",
+                           "50x0:01",
+                           "5000:01 ",
+                           "-1:01",
+                           "5000::01"}) {
+    CAPTURE(text);
+    CHECK_FALSE(parse_key(text));
+  }
+}
+
 TEST_CASE("type and access names", "[od_format]")
 {
   CHECK(to_string(od_value_type::float32) == "float32");

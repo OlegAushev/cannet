@@ -3,47 +3,15 @@
 #include <canopen/od_format.hpp>
 
 #include <array>
-#include <charconv>
 #include <format>
 #include <ostream>
 #include <print>
-#include <system_error>
 
 namespace cannet::canopen::tool {
 
 namespace {
 
 using namespace std::chrono_literals;
-
-std::optional<std::uint16_t> parse_hex(std::string_view text,
-                                       std::size_t max_digits)
-{
-  if (text.empty() || text.size() > max_digits) {
-    return std::nullopt;
-  }
-  std::uint16_t value = 0;
-  auto const end = text.data() + text.size();
-  auto const [ptr, ec] = std::from_chars(text.data(), end, value, 16);
-  if (ec != std::errc{} || ptr != end) {
-    return std::nullopt;
-  }
-  return value;
-}
-
-// As an OD file gives a key: index:subindex in hex.
-std::optional<od_key> parse_key(std::string_view text)
-{
-  auto const colon = text.find(':');
-  if (colon == std::string_view::npos) {
-    return std::nullopt;
-  }
-  auto const index = parse_hex(text.substr(0, colon), 4);
-  auto const subindex = parse_hex(text.substr(colon + 1), 2);
-  if (!index || !subindex) {
-    return std::nullopt;
-  }
-  return od_key{*index, static_cast<std::uint8_t>(*subindex)};
-}
 
 // category::subcategory::name, each part not empty.
 std::optional<std::array<std::string_view, 3>> split_name(std::string_view text)
@@ -99,9 +67,7 @@ std::expected<object_ref, std::string> find_object(std::string_view text,
 
 std::string label(object_ref const& object)
 {
-  auto text = std::format("{:04X}:{:02X}",
-                          object.key.index,
-                          object.key.subindex);
+  auto text = to_string(object.key);
   if (object.entry != nullptr) {
     auto const& o = object.entry->object;
     text += std::format(" {}::{}::{}", o.category, o.subcategory, o.name);

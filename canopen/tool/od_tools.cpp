@@ -390,9 +390,8 @@ od_file_from_emblib(std::string_view source,
   }
   for (auto const& r : *rows) {
     auto const& [category_name, subcategory, object, unit] = r.names;
-    text += std::format("{:04X}:{:02X} {} {} {} {} {} {}\n",
-                        r.key.index,
-                        r.key.subindex,
+    text += std::format("{} {} {} {} {} {} {}\n",
+                        to_string(r.key),
                         category_name,
                         subcategory,
                         object,
