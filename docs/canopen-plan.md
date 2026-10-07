@@ -1,7 +1,7 @@
 # CANopen stack plan
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2, 3, 4 and 5 done; stage 6,
-the pilot application, next.
+the pilot application for the ADPT-ETK Inverter with a web GUI, next.
 Last updated: 2026-10-07.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
@@ -653,26 +653,26 @@ value back, and `nmt` went to vcan only.
 
 ## Pilot application (stage 6)
 
-One device first; ucan-monitor is not migrated big-bang. Decide on Flatpak
-before this stage: the Flatpak sandbox gives no CAP_NET_ADMIN, so interface
-bring-up has to happen outside the application — systemd-networkd on a
+One device first; ucan-monitor is not migrated big-bang. The pilot is the
+ADPT-ETK Inverter: its dictionary comes from its firmware's table and was
+checked against the device in stage 5. Flatpak is not needed for now.
+Interface bring-up stays outside the application: systemd-networkd on a
 Raspberry Pi, `canup` interactively on a PC.
 
 The pilot is a repository of its own, as every device application is: it
 embeds cannet and compiles in the dictionary made from its firmware's
 `od.cpp` with `cannet_canopen_dictionary()`. What is the device's stays
 there: its dictionary, the decoding of its TPDOs, the policy of what may be
-written and when, the pages of its own. If its GUI is a web page, the layer
-that knows no device — the JSON of the dictionary, values and errors, the
-RPC over SDO, NMT, config and watch, the sessions and their checks below —
-is a directory and a target of its own inside the pilot, written to move
-into cannet whole (open question 2).
+written and when, the pages of its own. The layer of its web GUI that
+knows no device — the JSON of the dictionary, values and errors, the RPC
+over SDO, NMT, config and watch, the sessions and their checks below — is
+a directory and a target of its own inside the pilot, written to move into
+cannet whole (open question 2).
 
-A GUI written in TypeScript, in a browser, turns the application into a
-daemon: Beast and cannet on one `io_context` and one thread — a bus carries at
-most about 8000 full frames a second — and the page talking to it over HTTP
-and a WebSocket. Flatpak then no longer concerns the GUI, and the daemon takes
-on what a desktop GUI never had to:
+The GUI is a page in a browser, which turns the application into a daemon:
+Beast and cannet on one `io_context` and one thread — a bus carries at most
+about 8000 full frames a second — and the page talking to it over HTTP and a
+WebSocket. The daemon takes on what a desktop GUI never had to:
 
 - Anything open in the browser can reach a port on localhost, and a WebSocket
   is outside the same-origin policy, while what the daemon writes reaches real
@@ -691,6 +691,22 @@ on what a desktop GUI never had to:
   in TypeScript. Every `od_value` fits a JS `number` exactly; NaN and ±Inf
   need a convention. Input travels as text through `parse()`, the same
   validation as the CLI's.
+
+The page is written in TypeScript with Vue 3 (the Composition API,
+`<script setup lang="ts">`) and built with Vite into static files the
+daemon serves; Node builds the page and is never needed on the device. Vue
+updates only what a value reaches, a cell of the watch table, where React
+re-renders whole components, which live telemetry would have to work
+around; its templates are close to HTML and its types are checked in them
+too (`vue-tsc`). Plots are uPlot's, on canvas. There is no UI kit at first,
+only a few components of the page's own, and no state library: one module
+fed by the WebSocket holds the values in Vue's reactivity.
+
+On a Raspberry Pi the daemon serves the files and the data, and the page
+runs in whatever browser opens it. Whether it is also shown on the Pi
+itself, in Chromium as a kiosk, is open; if it is, a prototype — the watch
+table and uPlot with a few signals — is measured there first, on a Pi 4 or
+5: Chromium, not the page, is what a Pi 3 cannot carry.
 
 ## Not carried over from ucanopen
 
@@ -755,6 +771,8 @@ on what a desktop GUI never had to:
 | 2026-10-06 | Ctrl+C stops a CLI command between its requests: the one in flight finishes, a string read to its NUL |
 | 2026-10-06 | `od-verify` only reads: it checks the file's objects against the device, not the device's against the file, and not whether an object takes a write |
 | 2026-10-07 | The pilot application is a repository of its own over cannet. If its GUI is a web page, the layer that knows no device is a directory and target of its own inside it, to move into cannet after the pilot; where the TypeScript page goes is decided then |
+| 2026-10-07 | The pilot is the ADPT-ETK Inverter, and its GUI a web page served by a daemon over cannet and Beast; Flatpak is not needed for now |
+| 2026-10-07 | The page is TypeScript with Vue 3 (the Composition API), built with Vite; plots with uPlot; no UI kit and no state library at first |
 
 ## Open questions
 
@@ -762,7 +780,7 @@ on what a desktop GUI never had to:
    `transport`. Today a failed receive is retried silently after a pause. No
    longer optional: a GUI in a browser sees the bus only through its daemon,
    so bus-off, error-passive and a downed interface must reach it as events.
-   Needed by stage 6 if its GUI is a web page.
+   Needed by stage 6, whose GUI is a web page.
 2. **A web layer in cannet**: the JSON mapping of the dictionary, values and
    errors and the RPC over SDO, NMT, config and watch are not device-specific.
    By the argument that put history in cannet, they are a candidate for an
