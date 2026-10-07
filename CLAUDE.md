@@ -79,7 +79,10 @@ what privileges they need. A plane never reaches upward.
   `object_reading`s; and for a GUI on a thread of its own, `snapshot.hpp` (a
   lock-free triple buffer), `watch_snapshot.hpp`, and signal history for
   plots, `history.hpp`, in a target of its own that only a GUI links,
-  `cannet::canopen-history` (`canopen/history/`).
+  `cannet::canopen-history` (`canopen/history/`); and what tests run
+  against, cannet's own and a device application's, the header-only
+  `cannet::canopen-testing` (`canopen/testing/`): `emulated_device.hpp`, a
+  device that serves as emblib's server does, `bus_log.hpp` and `run.hpp`.
 
   Names and semantics mirror the device-side stack
   (`emb::can::canopen` in adpt-etk-inverter's emblib) so both ends of the wire

@@ -10,6 +10,7 @@
 
 using namespace cannet::canopen;
 using namespace cannet::canopen::test;
+using namespace cannet::canopen::testing;
 using namespace std::chrono_literals;
 
 namespace tool = cannet::canopen::tool;

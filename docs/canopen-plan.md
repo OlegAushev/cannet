@@ -74,6 +74,7 @@ canopen/
     service/ object_reading watch config     # stage 4, done
   src/ test/
   history/                                   # stage 4, done
+  testing/                                   # stage 6: for applications' tests
   tool/main.cpp od_tools bus_commands        # stage 5, done: CLI `canopen`
   cmake/canopen_dictionary.cmake             # stage 5, done
 ```
@@ -670,7 +671,9 @@ and when, the pages of its own. The layer of its web GUI that knows no
 device — the JSON of the dictionary, values and errors, the RPC over SDO,
 NMT, config and watch, the sessions and their checks below — is a
 directory and a target of its own inside the pilot, written to move into
-cannet whole (open question 2).
+cannet whole (open question 2). Its tests run, as cannet's do, against the
+emulated device on the loopback bus, which cannet exports for the purpose
+as the header-only `cannet::canopen-testing`.
 
 The GUI is a page in a browser, which turns the application into a daemon:
 Beast and cannet on one `io_context` and one thread — a bus carries at most
@@ -777,6 +780,7 @@ table and uPlot with a few signals — is measured there first, on a Pi 4 or
 | 2026-10-07 | The pilot is the ADPT-ETK Inverter, and its GUI a web page served by a daemon over cannet and Beast; Flatpak is not needed for now |
 | 2026-10-07 | The page is TypeScript with Vue 3 (the Composition API), built with Vite; plots with uPlot; no UI kit and no state library at first |
 | 2026-10-07 | A device's applications are `<device>-workbench`, the engineer's — configuration, tests, research — and `<device>-panel`, an operator's; the pilot is `adpt-etk-inverter-workbench` |
+| 2026-10-07 | The emulated device, the bus log and `run_until` are public, as the header-only `cannet::canopen-testing`, for a device application's tests as well as cannet's |
 
 ## Open questions
 

@@ -6,10 +6,10 @@
 
 #include "bus_commands.hpp"
 #include "drive_dictionary.hpp"
-#include "emulated_device.hpp"
-#include "support.hpp"
 
 #include <canopen/loopback.hpp>
+#include <canopen/testing/emulated_device.hpp>
+#include <canopen/testing/run.hpp>
 
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/bind_cancellation_slot.hpp>
@@ -102,7 +102,7 @@ struct cli_fixture {
                          std::chrono::milliseconds limit = run_limit)
   {
     auto const status = start(std::move(command));
-    run_until(io, [&] { return status->has_value(); }, limit);
+    testing::run_until(io, [&] { return status->has_value(); }, limit);
     return *status;
   }
 
@@ -110,9 +110,9 @@ struct cli_fixture {
   loopback_bus bus{io.get_executor()};
   loopback_transport host_bus{bus};
   loopback_transport device_bus{bus};
-  emulated_device device{device_bus,
-                         cli_device_id,
-                         std::chrono::milliseconds::zero()};
+  testing::emulated_device device{device_bus,
+                                  cli_device_id,
+                                  std::chrono::milliseconds::zero()};
   boost::asio::cancellation_signal stop;
   std::ostringstream out;
   std::ostringstream err;

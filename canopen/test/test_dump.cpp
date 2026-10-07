@@ -16,6 +16,7 @@
 
 using namespace cannet::canopen;
 using namespace cannet::canopen::test;
+using namespace cannet::canopen::testing;
 
 namespace tool = cannet::canopen::tool;
 

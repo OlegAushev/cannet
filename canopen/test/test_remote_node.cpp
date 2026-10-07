@@ -1,8 +1,9 @@
 #include <canopen/client.hpp>
 #include <canopen/loopback.hpp>
 
-#include "emulated_device.hpp"
-#include "support.hpp"
+#include <canopen/testing/bus_log.hpp>
+#include <canopen/testing/emulated_device.hpp>
+#include <canopen/testing/run.hpp>
 
 #include <boost/asio/io_context.hpp>
 
@@ -15,9 +16,9 @@
 
 using namespace cannet::canopen;
 using namespace std::chrono_literals;
-using cannet::canopen::test::bus_log;
-using cannet::canopen::test::emulated_device;
-using cannet::canopen::test::run_for;
+using cannet::canopen::testing::bus_log;
+using cannet::canopen::testing::emulated_device;
+using cannet::canopen::testing::run_for;
 
 namespace {
 

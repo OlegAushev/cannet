@@ -2,6 +2,8 @@
 
 #include "cli_fixture.hpp"
 
+#include <canopen/testing/bus_log.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
@@ -11,6 +13,7 @@
 
 using namespace cannet::canopen;
 using namespace cannet::canopen::test;
+using namespace cannet::canopen::testing;
 
 namespace tool = cannet::canopen::tool;
 

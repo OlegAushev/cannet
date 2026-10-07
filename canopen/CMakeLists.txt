@@ -5,7 +5,9 @@
 # services talk to — an interface with a CAN_RAW implementation over
 # cannet::cansocket and an in-memory one for tests; and on top of it the
 # client, its remote nodes and their services. Signal history for plots is
-# a target of its own, cannet::canopen-history, in history/.
+# a target of its own, cannet::canopen-history, in history/, and what tests
+# run against, the emulated device among it, is cannet::canopen-testing, in
+# testing/.
 
 add_library(canopen
     src/types.cpp
@@ -45,6 +47,7 @@ target_link_libraries(canopen
 )
 
 add_subdirectory(history)
+add_subdirectory(testing)
 
 # --- canopen CLI: the protocol's diagnostic tool, and the dictionary tools ---
 # Built in a standalone build. In a project that embeds cannet, only when

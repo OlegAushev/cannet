@@ -2,8 +2,8 @@
 #include <canopen/history.hpp>
 #include <canopen/loopback.hpp>
 
-#include "emulated_device.hpp"
-#include "support.hpp"
+#include <canopen/testing/emulated_device.hpp>
+#include <canopen/testing/run.hpp>
 
 #include <boost/asio/io_context.hpp>
 
@@ -19,9 +19,9 @@
 
 using namespace cannet::canopen;
 using namespace std::chrono_literals;
-using cannet::canopen::test::emulated_device;
-using cannet::canopen::test::run_for;
-using cannet::canopen::test::run_until;
+using cannet::canopen::testing::emulated_device;
+using cannet::canopen::testing::run_for;
+using cannet::canopen::testing::run_until;
 
 namespace {
 
@@ -70,7 +70,7 @@ struct fixture {
   template<typename Done>
   bool run_until(Done done)
   {
-    return test::run_until(io, done);
+    return testing::run_until(io, done);
   }
 
   boost::asio::io_context io;

@@ -26,6 +26,7 @@ add_executable(canopen-tests
 target_link_libraries(canopen-tests PRIVATE
     cannet::canopen
     cannet::canopen-history
+    cannet::canopen-testing
     canopen_tool
     Catch2::Catch2WithMain
     cannet_test_support

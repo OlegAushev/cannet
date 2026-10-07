@@ -2,8 +2,8 @@
 #include <canopen/loopback.hpp>
 #include <canopen/raw_transport.hpp>
 
-#include "emulated_device.hpp"
-#include "support.hpp"
+#include <canopen/testing/emulated_device.hpp>
+#include <canopen/testing/run.hpp>
 
 #include <cannet_test/vcan.hpp>
 
@@ -28,9 +28,9 @@
 
 using namespace cannet::canopen;
 using namespace std::chrono_literals;
-using cannet::canopen::test::device_object;
-using cannet::canopen::test::emulated_device;
-using cannet::canopen::test::run_for;
+using cannet::canopen::testing::device_object;
+using cannet::canopen::testing::emulated_device;
+using cannet::canopen::testing::run_for;
 
 namespace {
 

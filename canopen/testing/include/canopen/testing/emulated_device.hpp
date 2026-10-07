@@ -1,14 +1,21 @@
 #pragma once
 
-// An emulated device for the client's tests: one node behind a transport of
-// its own (an endpoint of the loopback bus, or a raw_transport on vcan)
-// that behaves, where the tests look, as emblib's server does in the
-// adpt-etk-inverter firmware. It starts operational by itself, sends its
-// heartbeat in every state, obeys NMT commands for every node or for it,
-// sends TPDOs and takes RPDOs only while operational, and serves SDO as
-// emblib's sdo_server does: expedited only, one string cursor, restore
-// default at 1011h:04, an answer to every request in the order they came.
-// A few knobs make it misbehave, for the client's error paths.
+// cannet::canopen::testing::emulated_device — a CANopen device in software,
+// for tests: one node behind a transport of its own (an endpoint of the
+// loopback bus, or a raw_transport on vcan) that behaves, where tests look,
+// as a device on emblib's CANopen server does. It starts operational by
+// itself, sends its heartbeat in every state, obeys NMT commands for every
+// node or for it, sends TPDOs and takes RPDOs only while operational, and
+// serves SDO as emblib's sdo_server does: expedited only, one string
+// cursor, restore default at 1011h:04, an answer to every request in the
+// order they came. A test gives it its objects; a few knobs make it
+// misbehave, for a client's error paths.
+//
+// Protocol plane, unprivileged, no I/O of its own: everything goes through
+// its transport.
+//
+// Thread model: the transport's. Every call on the transport's executor,
+// where the device's handlers run too.
 
 #include <canopen/od.hpp>
 #include <canopen/sdo.hpp>
@@ -20,7 +27,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <list>
 #include <map>
@@ -30,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-namespace cannet::canopen::test {
+namespace cannet::canopen::testing {
 
 // An object of the device's dictionary, as the device holds it.
 struct device_object {
@@ -355,4 +364,4 @@ private:
   std::vector<subscription> subscriptions_;
 };
 
-} // namespace cannet::canopen::test
+} // namespace cannet::canopen::testing
