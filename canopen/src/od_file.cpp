@@ -102,28 +102,6 @@ bool holdable(std::string_view field)
   });
 }
 
-std::optional<od_access> parse_access(std::string_view text)
-{
-  for (auto const access :
-       {od_access::rw, od_access::ro, od_access::wo, od_access::const_}) {
-    if (name(access) == text) {
-      return access;
-    }
-  }
-  return std::nullopt;
-}
-
-std::optional<od_value_type> parse_type(std::string_view text)
-{
-  for (std::size_t i = 0; i < od_value_type_count; ++i) {
-    auto const type = static_cast<od_value_type>(i);
-    if (name(type) == text) {
-      return type;
-    }
-  }
-  return std::nullopt;
-}
-
 // Columns a field takes: one per UTF-8 code point, as in "°C".
 std::size_t columns(std::string_view field)
 {

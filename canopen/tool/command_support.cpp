@@ -75,17 +75,6 @@ std::string label(object_ref const& object)
   return text;
 }
 
-std::optional<od_value_type> parse_type(std::string_view text)
-{
-  for (std::size_t i = 0; i < od_value_type_count; ++i) {
-    auto const type = static_cast<od_value_type>(i);
-    if (name(type) == text) {
-      return type;
-    }
-  }
-  return std::nullopt;
-}
-
 std::string_view cli_name(nmt_command command)
 {
   switch (command) {

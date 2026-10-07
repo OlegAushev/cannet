@@ -61,9 +61,6 @@ std::expected<object_ref, std::string> find_object(std::string_view text,
 // "5000:01 watch::sys::uptime"; the key alone outside the dictionary.
 std::string label(object_ref const& object);
 
-// A type by its name(), "uint16", as an OD file gives it.
-std::optional<od_value_type> parse_type(std::string_view text);
-
 // An NMT command as the CLI names it, nmt takes it and dump shows it:
 // "start", "stop", "pre-operational", "reset-node", "reset-communication".
 std::string_view cli_name(nmt_command command);

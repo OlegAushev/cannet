@@ -105,6 +105,24 @@ TEST_CASE("a key goes as index:subindex in hex", "[od_format]")
   }
 }
 
+TEST_CASE("types and accesses are read back from their names", "[od_format]")
+{
+  for (std::size_t i = 0; i < od_value_type_count; ++i) {
+    auto const type = static_cast<od_value_type>(i);
+    CAPTURE(name(type));
+    CHECK(parse_type(name(type)) == type);
+  }
+  for (auto const access :
+       {od_access::rw, od_access::ro, od_access::wo, od_access::const_}) {
+    CHECK(parse_access(name(access)) == access);
+  }
+  // Names, not what a UI shows.
+  CHECK_FALSE(parse_type("bool"));
+  CHECK_FALSE(parse_type("float"));
+  CHECK_FALSE(parse_access("const_"));
+  CHECK_FALSE(parse_access(""));
+}
+
 TEST_CASE("type and access names", "[od_format]")
 {
   CHECK(to_string(od_value_type::float32) == "float32");

@@ -59,4 +59,9 @@ std::string_view to_string(od_access access);
 std::string_view name(od_value_type type);
 std::string_view name(od_access access);
 
+// A type or an access read back from its name(), as an OD file, the CLI or
+// a web page gives it; nullopt for anything else.
+std::optional<od_value_type> parse_type(std::string_view text);
+std::optional<od_access> parse_access(std::string_view text);
+
 } // namespace cannet::canopen

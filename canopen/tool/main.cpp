@@ -22,6 +22,7 @@
 #include "od_tools.hpp"
 
 #include <canopen/od_file.hpp>
+#include <canopen/od_format.hpp>
 #include <canopen/raw_transport.hpp>
 
 #include <boost/asio/bind_cancellation_slot.hpp>
@@ -423,7 +424,7 @@ int sdo(std::string_view what, std::span<std::string_view const> args)
   }
   std::optional<od_value_type> type;
   if (auto const name = option(*parsed, "--type")) {
-    type = tool::parse_type(*name);
+    type = parse_type(*name);
     if (!type) {
       std::print(stderr, "canopen: not a type: {}\n", *name);
       return 2;

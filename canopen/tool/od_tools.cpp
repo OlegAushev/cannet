@@ -164,17 +164,6 @@ std::optional<std::uint32_t> number_value(std::string_view text)
   return value;
 }
 
-std::optional<od_value_type> type_named(std::string_view text)
-{
-  for (std::size_t i = 0; i < od_value_type_count; ++i) {
-    auto const type = static_cast<od_value_type>(i);
-    if (name(type) == text) {
-      return type;
-    }
-  }
-  return std::nullopt;
-}
-
 // The access an emblib binding gives its object: od_handlers.hpp's, and
 // the rw and ro of od_settings.hpp's bridges.
 std::optional<od_access> access_of(std::string_view binding)
@@ -317,7 +306,7 @@ private:
           .type = od_value_type::uint32};
     auto const type = qualified(i + 15);
     auto const binding = qualified(type->second + 1);
-    auto const named_type = type_named(type->first);
+    auto const named_type = parse_type(type->first);
     if (!named_type) {
       return fail(line, std::format("an unknown type, {}", type->first));
     }

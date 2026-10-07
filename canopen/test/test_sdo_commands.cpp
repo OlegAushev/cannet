@@ -52,15 +52,6 @@ TEST_CASE("an object is given by key or by name", "[cli]")
   }
 }
 
-TEST_CASE("a type is given by its name in an OD file", "[cli]")
-{
-  CHECK(tool::parse_type("uint16") == od_value_type::uint16);
-  CHECK(tool::parse_type("boolean") == od_value_type::boolean);
-  CHECK(tool::parse_type("string") == od_value_type::string);
-  CHECK_FALSE(tool::parse_type("bool"));
-  CHECK_FALSE(tool::parse_type("float"));
-}
-
 TEST_CASE("sdo read prints a value as the dictionary types it", "[cli]")
 {
   cli_fixture f;
