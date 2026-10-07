@@ -14,6 +14,7 @@ TEST_CASE("every socket_error has a description and a name", "[socket]")
   for (auto const e : {socket_error::not_open,
                        socket_error::create_failed,
                        socket_error::interface_not_found,
+                       socket_error::interface_down,
                        socket_error::bind_failed,
                        socket_error::set_option_failed,
                        socket_error::close_failed,
@@ -60,6 +61,28 @@ TEST_CASE("operations on a closed socket report not_open", "[socket]")
   CHECK(s.set_filters({}).error() == socket_error::not_open);
   CHECK(s.set_loopback(true).error() == socket_error::not_open);
   CHECK(s.set_recv_own_msgs(true).error() == socket_error::not_open);
+  CHECK(s.set_error_filter(CAN_ERR_MASK).error() == socket_error::not_open);
+}
+
+TEST_CASE("interface_up reports a missing interface", "[socket]")
+{
+  auto const missing = interface_up("cannet-nx0");
+  REQUIRE_FALSE(missing);
+  CHECK(missing.error() == socket_error::interface_not_found);
+
+  auto const too_long = interface_up("an-interface-name-too-long");
+  REQUIRE_FALSE(too_long);
+  CHECK(too_long.error() == socket_error::interface_not_found);
+}
+
+TEST_CASE("interface_up tells an interface that is up", "[socket][vcan]")
+{
+  if (!cannet::test::vcan_up()) {
+    SKIP("vcan0 is not up");
+  }
+  auto const up = interface_up(cannet::test::vcan_iface);
+  REQUIRE(up);
+  CHECK(*up);
 }
 
 TEST_CASE("recv times out when nothing arrives", "[socket][vcan]")

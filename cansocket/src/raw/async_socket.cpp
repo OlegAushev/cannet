@@ -12,6 +12,18 @@ namespace cannet::raw {
 
 namespace detail {
 
+namespace {
+
+// Asio reports the errno of a failed socket call in the system category.
+socket_error io_error(boost::system::error_code ec, socket_error otherwise)
+{
+  return ec.category() == boost::system::system_category()
+           ? detail::io_error(ec.value(), otherwise)
+           : otherwise;
+}
+
+} // namespace
+
 std::expected<can_frame, socket_error>
 receive_result(boost::system::error_code ec,
                std::size_t size,
@@ -23,7 +35,10 @@ receive_result(boost::system::error_code ec,
   if (ec == boost::asio::error::bad_descriptor) {
     return std::unexpected(socket_error::not_open);
   }
-  if (ec || size != sizeof(can_frame)) {
+  if (ec) {
+    return std::unexpected(io_error(ec, socket_error::recv_failed));
+  }
+  if (size != sizeof(can_frame)) {
     return std::unexpected(socket_error::recv_failed);
   }
   return frame;
@@ -43,7 +58,10 @@ std::expected<void, socket_error> send_result(boost::system::error_code ec,
   if (ec == boost::asio::error::no_buffer_space) {
     return std::unexpected(socket_error::tx_queue_full);
   }
-  if (ec || size != sizeof(can_frame)) {
+  if (ec) {
+    return std::unexpected(io_error(ec, socket_error::send_failed));
+  }
+  if (size != sizeof(can_frame)) {
     return std::unexpected(socket_error::send_failed);
   }
   return {};
@@ -135,6 +153,15 @@ std::expected<void, socket_error> async_socket::set_recv_own_msgs(bool enabled)
   return detail::set_flag(socket_.native_handle(),
                           CAN_RAW_RECV_OWN_MSGS,
                           enabled);
+}
+
+std::expected<void, socket_error>
+async_socket::set_error_filter(can_err_mask_t mask)
+{
+  if (!socket_.is_open()) {
+    return std::unexpected(socket_error::not_open);
+  }
+  return detail::set_error_filter(socket_.native_handle(), mask);
 }
 
 } // namespace cannet::raw

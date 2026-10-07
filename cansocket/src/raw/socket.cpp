@@ -3,6 +3,7 @@
 #include "socket_ops.hpp"
 
 #include <linux/can/raw.h>
+#include <net/if.h>
 #include <poll.h>
 #include <unistd.h>
 
@@ -88,6 +89,14 @@ std::expected<void, socket_error> socket::set_recv_own_msgs(bool enabled)
   return detail::set_flag(fd_, CAN_RAW_RECV_OWN_MSGS, enabled);
 }
 
+std::expected<void, socket_error> socket::set_error_filter(can_err_mask_t mask)
+{
+  if (fd_ < 0) {
+    return std::unexpected(socket_error::not_open);
+  }
+  return detail::set_error_filter(fd_, mask);
+}
+
 std::expected<void, socket_error> socket::send(can_frame const& frame)
 {
   if (fd_ < 0) {
@@ -99,9 +108,10 @@ std::expected<void, socket_error> socket::send(can_frame const& frame)
     // ENOBUFS: the interface TX queue is full — the kernel reports it even
     // on a blocking socket. EAGAIN can appear only once the fd is switched
     // to non-blocking; both mean "retry later".
-    return std::unexpected((errno == ENOBUFS || errno == EAGAIN)
-                               ? socket_error::tx_queue_full
-                               : socket_error::send_failed);
+    return std::unexpected(
+        (errno == ENOBUFS || errno == EAGAIN)
+            ? socket_error::tx_queue_full
+            : detail::io_error(errno, socket_error::send_failed));
   }
   if (written != static_cast<ssize_t>(sizeof(can_frame))) {
     return std::unexpected(socket_error::send_failed);
@@ -127,9 +137,18 @@ socket::recv(std::chrono::milliseconds timeout)
 
   can_frame frame{};
   if (::read(fd_, &frame, sizeof(can_frame)) < 0) {
-    return std::unexpected(socket_error::recv_failed);
+    return std::unexpected(detail::io_error(errno, socket_error::recv_failed));
   }
   return frame;
+}
+
+std::expected<bool, socket_error> interface_up(std::string_view iface)
+{
+  auto const flags = detail::interface_flags(iface);
+  if (!flags) {
+    return std::unexpected(flags.error());
+  }
+  return (*flags & IFF_UP) != 0;
 }
 
 std::string_view to_string(socket_error e)
@@ -138,6 +157,7 @@ std::string_view to_string(socket_error e)
   case socket_error::not_open: return "socket is not open";
   case socket_error::create_failed: return "failed to create socket";
   case socket_error::interface_not_found: return "interface not found";
+  case socket_error::interface_down: return "interface is down";
   case socket_error::bind_failed: return "failed to bind socket";
   case socket_error::set_option_failed: return "failed to set socket option";
   case socket_error::close_failed: return "failed to close socket";
@@ -156,6 +176,7 @@ std::string_view name(socket_error e)
   case socket_error::not_open: return "not_open";
   case socket_error::create_failed: return "create_failed";
   case socket_error::interface_not_found: return "interface_not_found";
+  case socket_error::interface_down: return "interface_down";
   case socket_error::bind_failed: return "bind_failed";
   case socket_error::set_option_failed: return "set_option_failed";
   case socket_error::close_failed: return "close_failed";

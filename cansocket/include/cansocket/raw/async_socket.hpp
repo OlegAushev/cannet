@@ -84,6 +84,7 @@ public:
   set_filters(std::span<can_filter const> filters);
   std::expected<void, socket_error> set_loopback(bool enabled);
   std::expected<void, socket_error> set_recv_own_msgs(bool enabled);
+  std::expected<void, socket_error> set_error_filter(can_err_mask_t mask);
 
   // Receives one frame. Supports per-operation cancellation (cancel_after,
   // a bound cancellation slot): a cancelled receive completes with

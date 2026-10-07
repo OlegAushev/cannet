@@ -1,4 +1,5 @@
 #include <cansocket/raw/async_socket.hpp>
+#include <cansocket/raw/error_frame.hpp>
 #include <cansocket/raw/socket.hpp>
 
 #include <cannet_test/vcan.hpp>
@@ -12,7 +13,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <linux/can/error.h>
+
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -68,7 +72,36 @@ TEST_CASE("operations on a closed async_socket report not_open",
   CHECK(s.set_filters({}).error() == socket_error::not_open);
   CHECK(s.set_loopback(true).error() == socket_error::not_open);
   CHECK(s.set_recv_own_msgs(true).error() == socket_error::not_open);
+  CHECK(s.set_error_filter(CAN_ERR_MASK).error() == socket_error::not_open);
   s.cancel(); // a no-op, not an error
+}
+
+TEST_CASE("a downed or vanished interface fails sends and receives by name",
+          "[async_socket]")
+{
+  namespace detail = cannet::raw::detail;
+  auto const system = [](int e) {
+    return boost::system::error_code{e, boost::system::system_category()};
+  };
+  can_frame const frame{};
+
+  CHECK(detail::receive_result(system(ENETDOWN), 0, frame).error()
+        == socket_error::interface_down);
+  CHECK(detail::receive_result(system(ENODEV), 0, frame).error()
+        == socket_error::interface_not_found);
+  CHECK(detail::receive_result(system(EIO), 0, frame).error()
+        == socket_error::recv_failed);
+  CHECK(detail::receive_result({}, 3, frame).error()
+        == socket_error::recv_failed);
+
+  CHECK(detail::send_result(system(ENETDOWN), 0).error()
+        == socket_error::interface_down);
+  CHECK(detail::send_result(system(ENXIO), 0).error()
+        == socket_error::interface_not_found);
+  CHECK(detail::send_result(system(ENOBUFS), 0).error()
+        == socket_error::tx_queue_full);
+  CHECK(detail::send_result(system(EIO), 0).error()
+        == socket_error::send_failed);
 }
 
 TEST_CASE("frames travel between async sockets", "[async_socket][vcan]")
@@ -225,4 +258,46 @@ TEST_CASE("a pending receive completes with cancelled", "[async_socket][vcan]")
 
   REQUIRE(received);
   CHECK(received->error() == socket_error::cancelled);
+}
+
+TEST_CASE("error frames come through the error filter alone",
+          "[async_socket][vcan]")
+{
+  if (!cannet::test::vcan_up()) {
+    SKIP("vcan0 is not up");
+  }
+
+  boost::asio::io_context io;
+  async_socket tx{io.get_executor()};
+  async_socket errors{io.get_executor()};
+  async_socket frames{io.get_executor()};
+  REQUIRE(tx.open(cannet::test::vcan_iface));
+  REQUIRE(errors.open(cannet::test::vcan_iface));
+  REQUIRE(frames.open(cannet::test::vcan_iface));
+  // No frame filter lets anything through: the error filter is separate.
+  REQUIRE(errors.set_filters({}));
+  REQUIRE(errors.set_error_filter(CAN_ERR_MASK));
+
+  // vcan has no controller, but delivers an error frame a socket sends.
+  can_frame bus_off{};
+  bus_off.can_id = CAN_ERR_FLAG | CAN_ERR_BUSOFF;
+  bus_off.len = CAN_ERR_DLC;
+
+  std::optional<receive_result> with_filter;
+  std::optional<receive_result> without_filter;
+  errors.async_receive([&](receive_result r) { with_filter = r; });
+  frames.async_receive(boost::asio::cancel_after(100ms, [&](receive_result r) {
+    without_filter = r;
+  }));
+  tx.async_send(bus_off, [](send_result) {});
+  io.run_for(1s);
+
+  REQUIRE(with_filter);
+  REQUIRE(with_filter->has_value());
+  auto const report = decode_error_frame(**with_filter);
+  REQUIRE(report);
+  CHECK(report->state == cannet::raw::controller_state::bus_off);
+
+  REQUIRE(without_filter);
+  CHECK(without_filter->error() == socket_error::cancelled);
 }

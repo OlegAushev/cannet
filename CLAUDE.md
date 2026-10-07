@@ -51,8 +51,9 @@ what privileges they need. A plane never reaches upward.
   bitrate whitelist — that is application policy.
 - `cansocket/` (`namespace cannet::raw`) — transport plane: CAN frame I/O over
   an already-up interface, unprivileged. `cannet::raw::socket` (blocking) and
-  `cannet::raw::async_socket` (Boost.Asio) are CAN_RAW today; ISO-TP and
-  J1939 will be sibling types beside them, each in its own
+  `cannet::raw::async_socket` (Boost.Asio) are CAN_RAW today, with the
+  controller's error frames on request (`error_frame.hpp` decodes them);
+  ISO-TP and J1939 will be sibling types beside them, each in its own
   namespace, never modes of one class: they differ in bind addressing,
   setsockopt space and I/O unit. Every protocol client owns its own fd — the
   kernel fans frames out — so there is no userspace demultiplexer between

@@ -1,6 +1,7 @@
 add_executable(cansocket-tests
     test_socket.cpp
     test_async_socket.cpp
+    test_error_frame.cpp
 )
 
 target_link_libraries(cansocket-tests PRIVATE

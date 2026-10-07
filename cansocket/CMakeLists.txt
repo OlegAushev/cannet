@@ -8,6 +8,7 @@ add_library(cansocket
     src/raw/socket_ops.cpp
     src/raw/socket.cpp
     src/raw/async_socket.cpp
+    src/raw/error_frame.cpp
 )
 
 add_library(cannet::cansocket ALIAS cansocket)

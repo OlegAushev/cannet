@@ -3,9 +3,10 @@
 // cannet::raw::socket — raw CAN frame I/O (CAN_RAW) over an already-up
 // SocketCAN interface.
 //
-// Transport plane only: open/bind, send, recv, kernel-side socket options.
-// Unprivileged — binding a RAW CAN socket requires no capabilities. Interface
-// configuration (bitrate, up/down) is a separate concern; see cannet::canup.
+// Transport plane only: open/bind, send, recv, kernel-side socket options,
+// and whether an interface is up. Unprivileged — binding a RAW CAN socket
+// requires no capabilities. Interface configuration (bitrate, up/down) is a
+// separate concern; see cannet::canup.
 // This is the blocking socket; cannet::raw::async_socket is its Boost.Asio
 // sibling and shares its error enum. Future transports (ISO-TP, J1939) are
 // sibling types beside these, not modes of them: the kernel protocols differ
@@ -28,7 +29,11 @@ namespace cannet::raw {
 enum class socket_error {
   not_open,            // open() not called yet or socket already closed
   create_failed,       // socket(PF_CAN, SOCK_RAW, CAN_RAW) failed
-  interface_not_found, // no such interface (name too long or SIOCGIFINDEX)
+  interface_not_found, // no such interface: at open() (name too long or
+                       // SIOCGIFINDEX), or gone since (an adapter unplugged),
+                       // which leaves the socket receiving nothing for good
+  interface_down,      // the interface is down: sends fail, and nothing
+                       // arrives until it is up again
   bind_failed,
   set_option_failed, // setsockopt() rejected the option or its arguments
   close_failed,
@@ -85,6 +90,13 @@ public:
   // loopback is enabled (kernel default: disabled).
   std::expected<void, socket_error> set_recv_own_msgs(bool enabled);
 
+  // Which error frames the socket receives (CAN_RAW_ERR_FILTER): the
+  // classes of linux/can/error.h, CAN_ERR_MASK for all of them. A freshly
+  // opened socket receives none. They arrive as frames with CAN_ERR_FLAG
+  // set, which error_frame.hpp decodes; the filters of set_filters() do not
+  // apply to them.
+  std::expected<void, socket_error> set_error_filter(can_err_mask_t mask);
+
   std::expected<void, socket_error> send(can_frame const& frame);
 
   // Waits up to `timeout` for one frame; a negative timeout waits
@@ -95,6 +107,10 @@ public:
 private:
   int fd_ = -1;
 };
+
+// Whether the interface `iface` is up: a read of its flags, unprivileged.
+// Fails with interface_not_found when there is no such interface.
+std::expected<bool, socket_error> interface_up(std::string_view iface);
 
 // A human-readable description of a `socket_error`, for people; the wording
 // may change.

@@ -2,7 +2,8 @@
 
 // fd-level CAN_RAW operations shared by cannet::raw::socket and
 // cannet::raw::async_socket, so that both open, bind and configure a socket
-// the same way and report the same errors. Private to cansocket.
+// the same way and report the same errors, and the interface's flags.
+// Private to cansocket.
 
 #include <cansocket/raw/socket.hpp>
 
@@ -23,5 +24,16 @@ set_filters(int fd, std::span<can_filter const> filters);
 
 // An int-valued boolean SOL_CAN_RAW option (loopback, recv_own_msgs).
 std::expected<void, socket_error> set_flag(int fd, int optname, bool enabled);
+
+// CAN_RAW_ERR_FILTER.
+std::expected<void, socket_error> set_error_filter(int fd, can_err_mask_t mask);
+
+// The error a failed send or receive reports for the errno it set: the
+// interface's own state when the errno tells it, else `otherwise`.
+socket_error io_error(int error, socket_error otherwise);
+
+// The flags of the interface `iface` (SIOCGIFFLAGS), through a socket of
+// its own.
+std::expected<int, socket_error> interface_flags(std::string_view iface);
 
 } // namespace cannet::raw::detail
