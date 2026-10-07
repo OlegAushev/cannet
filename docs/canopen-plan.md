@@ -2,7 +2,7 @@
 
 Status: in progress — stages 1 (`cd2712d`), 0, 2, 3, 4 and 5 done; stage 6,
 the pilot application, next.
-Last updated: 2026-10-06.
+Last updated: 2026-10-07.
 
 A limited host-side CANopen stack for `cannet::canopen`: the host's half of
 the protocol whose device half is emblib's `emb::can::canopen`. It replaces
@@ -658,6 +658,16 @@ before this stage: the Flatpak sandbox gives no CAP_NET_ADMIN, so interface
 bring-up has to happen outside the application — systemd-networkd on a
 Raspberry Pi, `canup` interactively on a PC.
 
+The pilot is a repository of its own, as every device application is: it
+embeds cannet and compiles in the dictionary made from its firmware's
+`od.cpp` with `cannet_canopen_dictionary()`. What is the device's stays
+there: its dictionary, the decoding of its TPDOs, the policy of what may be
+written and when, the pages of its own. If its GUI is a web page, the layer
+that knows no device — the JSON of the dictionary, values and errors, the
+RPC over SDO, NMT, config and watch, the sessions and their checks below —
+is a directory and a target of its own inside the pilot, written to move
+into cannet whole (open question 2).
+
 A GUI written in TypeScript, in a browser, turns the application into a
 daemon: Beast and cannet on one `io_context` and one thread — a bus carries at
 most about 8000 full frames a second — and the page talking to it over HTTP
@@ -744,6 +754,7 @@ on what a desktop GUI never had to:
 | 2026-10-06 | The CLI's bus commands are coroutines over a transport, tested against the emulated device on the loopback bus; the CLI's own node never starts, so it sends no heartbeat, SYNC or RPDO |
 | 2026-10-06 | Ctrl+C stops a CLI command between its requests: the one in flight finishes, a string read to its NUL |
 | 2026-10-06 | `od-verify` only reads: it checks the file's objects against the device, not the device's against the file, and not whether an object takes a write |
+| 2026-10-07 | The pilot application is a repository of its own over cannet. If its GUI is a web page, the layer that knows no device is a directory and target of its own inside it, to move into cannet after the pilot; where the TypeScript page goes is decided then |
 
 ## Open questions
 
@@ -755,5 +766,10 @@ on what a desktop GUI never had to:
 2. **A web layer in cannet**: the JSON mapping of the dictionary, values and
    errors and the RPC over SDO, NMT, config and watch are not device-specific.
    By the argument that put history in cannet, they are a candidate for an
-   optional target over Boost.Beast and Boost.JSON. Revisit after the pilot,
-   not before.
+   optional target over Boost.Beast and Boost.JSON. The pilot keeps them
+   apart from everything of its device (stage 6); after the pilot, with a
+   second device to try the boundary on, they move into cannet or stay. The
+   TypeScript page, which builds its tables from the dictionary's JSON, is
+   mostly generic too: whether it goes to an optional `web/` in cannet,
+   bringing Node into a C++ library's repository, or to a shared repository
+   of its own, is decided then as well.
